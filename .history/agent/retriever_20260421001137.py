@@ -27,24 +27,15 @@ def tokenize(text: str) -> set[str]:
 
 
 def load_chunks() -> list[KnowledgeChunk]:
-    """
-    加载知识块列表，如果存在索引文件则直接加载，否则从文档目录创建
-    返回:
-        list[KnowledgeChunk]: 包含知识块的列表，如果没有内容则返回空列表
-    """
     if INDEX_PATH.exists():
-        # 如果索引文件存在，直接读取并解析为KnowledgeChunk对象列表
         payload = json.loads(INDEX_PATH.read_text(encoding="utf-8"))
         return [KnowledgeChunk(**item) for item in payload]
 
     chunks: list[KnowledgeChunk] = []
     if not DOCS_DIR.exists():
-        # 如果文档目录不存在，直接返回空列表
         return chunks
 
-    # 遍历文档目录中的所有文件
     for path in DOCS_DIR.glob("*"):
-        # 只处理.md和.txt文件
         if path.suffix.lower() not in {".md", ".txt"}:
             continue
         text = path.read_text(encoding="utf-8")
