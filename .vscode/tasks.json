@@ -1,0 +1,22 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build knowledge index",
+      "type": "shell",
+      "command": "python",
+      "args": ["knowledge/build_index.py"],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run server",
+      "type": "shell",
+      "command": "python",
+      "args": ["-m", "uvicorn", "app:app", "--reload"],
+      "group": "build",
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "editor.formatOnSave": true,
+  "editor.rulers": [100],
+  "files.eol": "\n",
+  "python.analysis.autoImportCompletions": true,
+  "python.defaultInterpreterPath": "python"
+}

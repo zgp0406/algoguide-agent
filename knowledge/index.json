@@ -1,0 +1,10 @@
+[
+  {
+    "source": "sample_algorithms.md",
+    "text": "# Dynamic Programming Notes\nDynamic programming works well when a problem has overlapping subproblems and an optimal substructure.\nTypical workflow:\n1. Define state.\n2. Define transition.\n3. Set base cases.\n4. Determine iteration order.\nExample: house robber\n- State: dp[i] means the maximum money from the first i houses.\n- Transition: dp[i] = max(dp[i - 1], dp[i - 2] + nums[i]).\n- Base cases: dp[0] = 0, dp[1] = nums[0]."
+  },
+  {
+    "source": "sample_algorithms.md",
+    "text": "When explaining to a beginner, first describe the intuition, then the recurrence, then the code."
+  }
+]

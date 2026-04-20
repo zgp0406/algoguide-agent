@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AlgoGuide Agent</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar-top">
+          <div class="brand">
+            <span class="brand-mark"></span>
+            <div>
+              <strong>AlgoGuide Agent</strong>
+              <span>Chat workspace</span>
+            </div>
+          </div>
+          <button class="new-chat" type="button" id="new-chat">+ New chat</button>
+        </div>
+
+        <div class="sidebar-group">
+          <p class="sidebar-label">Recent chats</p>
+          <button type="button" class="sidebar-item active" data-prompt="动态规划怎么定义状态？">动态规划怎么定义状态？</button>
+          <button type="button" class="sidebar-item" data-prompt="最大子矩阵和怎么做？">最大子矩阵和怎么做？</button>
+          <button type="button" class="sidebar-item" data-prompt="给我一个算法题讲解模板。">给我一个算法题讲解模板。</button>
+        </div>
+
+        <div class="sidebar-group sidebar-bottom">
+          <p class="sidebar-label">Shortcuts</p>
+          <button type="button" class="sidebar-item" data-prompt="给我一个 C++ 版的动态规划例题。">C++ example</button>
+          <button type="button" class="sidebar-item" data-prompt="把这个答案讲得更简单一点。">Simplify</button>
+          <button type="button" class="sidebar-item" data-prompt="继续追问这道题的状态转移。">Follow up</button>
+        </div>
+      </aside>
+
+      <section class="chat-panel">
+        <header class="chat-topbar">
+          <div class="chat-title">
+            <p>AlgoGuide Agent</p>
+            <h1>ChatGPT-style algorithm assistant</h1>
+          </div>
+          <div class="chat-badge">
+            <span class="status-dot"></span>
+            <span>RAG ready</span>
+          </div>
+        </header>
+
+        <div class="chat-body">
+          <div class="chat-notice">
+            <span>Knowledge retrieval enabled</span>
+            <span>Multi-turn conversation</span>
+          </div>
+
+          <div id="messages" class="messages" aria-live="polite"></div>
+        </div>
+
+        <footer class="composer-wrap">
+          <form id="chat-form" class="composer">
+            <label class="sr-only" for="input">请输入问题</label>
+            <textarea id="input" rows="1" placeholder="Message AlgoGuide..."></textarea>
+            <div class="composer-row">
+              <p class="helper-text">Enter to send, Shift + Enter for a new line</p>
+              <button type="submit">Send</button>
+            </div>
+          </form>
+        </footer>
+      </section>
+    </main>
+    <script src="/script.js"></script>
+  </body>
+</html>
