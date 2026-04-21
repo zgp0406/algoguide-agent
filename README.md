@@ -21,26 +21,37 @@ AlgoGuide Agent 是一个面向算法学习场景的 AI 助手原型，基于 Fa
 
 ## 如何运行
 
-1. 创建虚拟环境。
-2. 安装依赖：
+1. 创建虚拟环境：
+
+```powershell
+python -m venv .venv
+```
+
+2. 激活虚拟环境：
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+3. 安装依赖：
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. 构建本地知识索引：
+4. 构建本地知识索引：
 
 ```bash
 python knowledge/build_index.py
 ```
 
-4. 启动服务：
+5. 启动服务：
 
 ```bash
 uvicorn app:app --reload
 ```
 
-5. 打开浏览器访问：
+6. 打开浏览器访问：
 
 ```text
 http://127.0.0.1:8000
@@ -67,6 +78,12 @@ OPENAI_MODEL=gpt-4.1-mini
 ## 当前版本说明
 
 这是一个可运行的 MVP 版本，后续可以继续升级为更完整的 RAG/FAISS 方案。
+
+如果 PowerShell 提示脚本执行策略限制，可以先运行：
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
 
 推荐下一步优化：
 
