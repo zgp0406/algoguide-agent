@@ -5,9 +5,12 @@ const newChatButton = document.getElementById("new-chat");
 const promptButtons = document.querySelectorAll("[data-prompt]");
 const chatBadgeText = document.getElementById("chat-badge-text");
 const statusDot = document.querySelector(".status-dot");
+const recentChatsList = document.getElementById("recent-chats");
 
 const history = [];
 let readinessMessage = null;
+let currentSessionId = null;
+let recentSessions = [];
 let connectionState = {
   ready: false,
   text: "正在检查 API 连接...",
@@ -89,6 +92,82 @@ function appendMessageMeta(messageEl, sourceList = [], usedRag = false) {
   }
 }
 
+function formatSessionTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function renderRecentChats(sessions) {
+  if (!recentChatsList) return;
+
+  recentChatsList.innerHTML = "";
+  if (!sessions.length) {
+    const empty = document.createElement("div");
+    empty.className = "session-empty";
+    empty.textContent = "暂无会话记录，先发一条消息就会自动保存。";
+    recentChatsList.appendChild(empty);
+    return;
+  }
+
+  sessions.forEach((session) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `session-item${session.id === currentSessionId ? " active" : ""}`;
+    button.dataset.sessionId = session.id;
+
+    const title = document.createElement("div");
+    title.className = "session-title";
+    title.textContent = session.title || "新对话";
+    button.appendChild(title);
+
+    const meta = document.createElement("div");
+    meta.className = "session-meta";
+    const parts = [];
+    if (typeof session.message_count === "number") {
+      parts.push(`${session.message_count} 条消息`);
+    }
+    const time = formatSessionTime(session.updated_at);
+    if (time) {
+      parts.push(time);
+    }
+    meta.textContent = parts.join(" · ");
+    button.appendChild(meta);
+
+    button.addEventListener("click", () => {
+      openSession(session.id);
+    });
+
+    recentChatsList.appendChild(button);
+  });
+}
+
+function renderConversation(messagesData = [], includeIntro = false) {
+  messages.innerHTML = "";
+  readinessMessage = appendMessage("assistant", connectionState.text);
+
+  if (includeIntro) {
+    appendMessage(
+      "assistant",
+      "新对话已开始。你可以直接问一个算法问题，我会先检索再回答。",
+      { usedRag: true, sources: ["sample_algorithms.md"] }
+    );
+  }
+
+  messagesData.forEach((message) => {
+    appendMessage(message.role, message.content, {
+      sources: Array.isArray(message.sources) ? message.sources : [],
+      usedRag: Boolean(message.used_rag),
+    });
+  });
+}
+
 function appendTyping() {
   const el = document.createElement("div");
   el.className = "message assistant";
@@ -154,7 +233,56 @@ async function loadStatus() {
   }
 }
 
+async function loadRecentChats() {
+  try {
+    const response = await fetch("/api/sessions?limit=10");
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    recentSessions = Array.isArray(data.sessions) ? data.sessions : [];
+    renderRecentChats(recentSessions);
+
+    if (!currentSessionId && recentSessions.length) {
+      await openSession(recentSessions[0].id, { silent: true });
+    } else {
+      renderRecentChats(recentSessions);
+    }
+  } catch (error) {
+    recentSessions = [];
+    renderRecentChats(recentSessions);
+    console.error("Failed to load recent chats:", error);
+  }
+}
+
+async function openSession(sessionId, options = {}) {
+  try {
+    const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    const session = data.session;
+    if (!session) {
+      throw new Error("Session not found");
+    }
+
+    currentSessionId = session.id;
+    history.length = 0;
+    (session.messages || []).forEach((message) => {
+      history.push({ role: message.role, content: message.content });
+    });
+    renderConversation(session.messages || [], false);
+    renderRecentChats(recentSessions);
+  } catch (error) {
+    if (!options.silent) {
+      appendMessage("assistant", `打开会话失败：${error}`);
+    }
+  }
+}
+
 loadStatus();
+loadRecentChats();
 
 promptButtons.forEach((button) => {
   button.addEventListener("click", () => {
@@ -169,16 +297,12 @@ promptButtons.forEach((button) => {
 });
 
 newChatButton?.addEventListener("click", () => {
-  messages.innerHTML = "";
+  currentSessionId = null;
   history.length = 0;
   input.value = "";
   input.style.height = "auto";
-  readinessMessage = appendMessage("assistant", connectionState.text);
-  appendMessage(
-    "assistant",
-    "新对话已开始。你可以直接问一个算法问题，我会先检索再回答。",
-    { usedRag: true, sources: ["sample_algorithms.md"] }
-  );
+  renderConversation([], true);
+  renderRecentChats(recentSessions);
 });
 
 input.addEventListener("keydown", (event) => {
@@ -199,7 +323,7 @@ async function submitStreamingChat(text) {
   const response = await fetch("/api/chat/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message: text, history }),
+    body: JSON.stringify({ message: text, history, session_id: currentSessionId }),
     signal: controller.signal,
   });
 
@@ -217,6 +341,7 @@ async function submitStreamingChat(text) {
   let streamedAnswer = "";
   let meta = { sources: [], usedRag: false };
   let sawDelta = false;
+  let streamedSessionId = currentSessionId;
 
   const handleEvent = (eventName, rawData) => {
     if (!rawData) return;
@@ -229,6 +354,10 @@ async function submitStreamingChat(text) {
     }
 
     if (eventName === "meta") {
+      if (payload.session_id) {
+        streamedSessionId = String(payload.session_id);
+        currentSessionId = streamedSessionId;
+      }
       meta = {
         sources: Array.isArray(payload.sources) ? payload.sources : [],
         usedRag: Boolean(payload.used_rag),
@@ -253,6 +382,10 @@ async function submitStreamingChat(text) {
     }
 
     if (eventName === "done") {
+      if (payload.session_id) {
+        streamedSessionId = String(payload.session_id);
+        currentSessionId = streamedSessionId;
+      }
       const finalAnswer = typeof payload.answer === "string" ? payload.answer : streamedAnswer;
       if (finalAnswer && !sawDelta) {
         setMessageText(assistantMessage, finalAnswer);
@@ -319,7 +452,7 @@ async function submitStreamingChat(text) {
     setMessageText(assistantMessage, "请求完成，但没有返回内容。");
   }
 
-  return assistantMessage;
+  return { assistantMessage, sessionId: streamedSessionId };
 }
 
 form.addEventListener("submit", async (event) => {
@@ -336,16 +469,21 @@ form.addEventListener("submit", async (event) => {
 
   try {
     typing.remove();
-    const assistantMessage = await submitStreamingChat(text);
+    const result = await submitStreamingChat(text);
+    const assistantMessage = result.assistantMessage;
+    if (result.sessionId) {
+      currentSessionId = result.sessionId;
+    }
     const assistantText = assistantMessage.querySelector(".message-content")?.textContent || "";
     history.push({ role: "assistant", content: assistantText });
+    await loadRecentChats();
   } catch (error) {
     typing.remove();
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, history }),
+        body: JSON.stringify({ message: text, history, session_id: currentSessionId }),
       });
       const data = await response.json();
       const assistantMessage = appendMessage("assistant", data.answer, {
@@ -355,10 +493,14 @@ form.addEventListener("submit", async (event) => {
       if (data.error) {
         appendErrorMeta(assistantMessage, data.error);
       }
+      if (data.session_id) {
+        currentSessionId = data.session_id;
+      }
       history.push({
         role: "assistant",
         content: assistantMessage.querySelector(".message-content")?.textContent || data.answer,
       });
+      await loadRecentChats();
     } catch (fallbackError) {
       appendMessage("assistant", `请求失败：${fallbackError}`);
     }

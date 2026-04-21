@@ -109,6 +109,49 @@ textarea {
   gap: 8px;
 }
 
+.session-list {
+  display: grid;
+  gap: 8px;
+}
+
+.session-item {
+  width: 100%;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.94);
+  border-radius: 12px;
+  padding: 10px 12px;
+  text-align: left;
+  box-shadow: none;
+  display: grid;
+  gap: 4px;
+}
+
+.session-item:hover {
+  background: var(--sidebar-hover);
+}
+
+.session-item.active {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.session-title {
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.session-meta {
+  font-size: 0.74rem;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.session-empty {
+  color: rgba(255, 255, 255, 0.52);
+  font-size: 0.84rem;
+  padding: 4px 10px 10px;
+}
+
 .sidebar-bottom {
   margin-top: auto;
 }

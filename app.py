@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from agent.chain import ChatRequest, chat, get_api_status, stream_chat
+from agent.chain import ChatRequest, chat, get_api_status, get_session_detail, list_recent_sessions, stream_chat
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -51,6 +51,16 @@ def chat_stream_api(request: ChatRequest) -> StreamingResponse:
 @app.get("/api/status")
 def api_status() -> dict[str, object]:
     return get_api_status().model_dump()
+
+
+@app.get("/api/sessions")
+def sessions_api(limit: int = 10) -> dict[str, object]:
+    return {"sessions": list_recent_sessions(limit=limit)}
+
+
+@app.get("/api/sessions/{session_id}")
+def session_detail_api(session_id: str) -> dict[str, object]:
+    return {"session": get_session_detail(session_id)}
 
 
 # Keep the frontend as the site root so the app opens directly in the browser.

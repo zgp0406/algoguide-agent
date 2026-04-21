@@ -9,6 +9,9 @@ __pycache__/
 # Logs
 *.log
 
+# Local data storage
+data/
+
 # Local env files
 .env
 .env.local

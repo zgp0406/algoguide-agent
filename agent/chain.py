@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from agent.env import load_env_file
 from agent.prompt import SYSTEM_PROMPT
 from agent.retriever import retrieve
+from agent.sessions import append_turn, get_session, list_sessions, upsert_session_message
 
 
 load_env_file()
@@ -20,6 +21,7 @@ load_env_file()
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     history: list[dict[str, str]] = Field(default_factory=list)
+    session_id: str | None = None
 
 
 class ChatResponse(BaseModel):
@@ -27,6 +29,7 @@ class ChatResponse(BaseModel):
     sources: list[str] = Field(default_factory=list)
     used_rag: bool = False
     error: str | None = None
+    session_id: str | None = None
 
 
 class ApiStatusResponse(BaseModel):
@@ -166,6 +169,14 @@ def _sse_event(event: str, data: dict[str, object]) -> bytes:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n".encode("utf-8")
 
 
+def list_recent_sessions(limit: int = 10) -> list[dict[str, object]]:
+    return list_sessions(limit=limit)
+
+
+def get_session_detail(session_id: str) -> dict[str, object] | None:
+    return get_session(session_id)
+
+
 def get_api_status(force_refresh: bool = False) -> ApiStatusResponse:
     global _API_STATUS_CACHE
 
@@ -245,6 +256,7 @@ def local_answer(message: str, sources: list[str], used_rag: bool) -> str:
 
 def chat(request: ChatRequest) -> ChatResponse:
     prompt, sources, used_rag = build_context(request.message)
+    session_id = request.session_id
 
     api_key, _, _ = _api_config()
     if api_key:
@@ -257,37 +269,85 @@ def chat(request: ChatRequest) -> ChatResponse:
                 ],
                 temperature=0.2,
             )
-            return ChatResponse(answer=answer, sources=sources, used_rag=used_rag)
+            session = append_turn(
+                session_id,
+                user_message=request.message,
+                assistant_message=answer,
+                assistant_sources=sources,
+                assistant_used_rag=used_rag,
+            )
+            return ChatResponse(answer=answer, sources=sources, used_rag=used_rag, session_id=session["id"])
         except Exception as exc:
+            fallback_answer = local_answer(request.message, sources, used_rag)
+            session = append_turn(
+                session_id,
+                user_message=request.message,
+                assistant_message=fallback_answer,
+                assistant_sources=sources,
+                assistant_used_rag=used_rag,
+            )
             # Fall back to the local response so the demo still works offline.
             # The API path is preferred, but the app remains usable if config is incomplete.
             return ChatResponse(
-                answer=local_answer(request.message, sources, used_rag),
+                answer=fallback_answer,
                 sources=sources,
                 used_rag=used_rag,
                 error=f"{exc.__class__.__name__}: {exc}",
+                session_id=session["id"],
             )
 
+    fallback_answer = local_answer(request.message, sources, used_rag)
+    session = append_turn(
+        session_id,
+        user_message=request.message,
+        assistant_message=fallback_answer,
+        assistant_sources=sources,
+        assistant_used_rag=used_rag,
+    )
     return ChatResponse(
-        answer=local_answer(request.message, sources, used_rag),
+        answer=fallback_answer,
         sources=sources,
         used_rag=used_rag,
         error="Missing OPENAI_API_KEY",
+        session_id=session["id"],
     )
 
 
 def stream_chat(request: ChatRequest) -> Iterator[bytes]:
     prompt, sources, used_rag = build_context(request.message)
+    session = upsert_session_message(
+        request.session_id,
+        role="user",
+        content=request.message,
+        title_hint=request.message,
+    )
+    session_id = session["id"]
 
     api_key, _, _ = _api_config()
     if not api_key:
         answer = local_answer(request.message, sources, used_rag)
-        yield _sse_event("meta", {"sources": sources, "used_rag": used_rag, "ready": False})
+        yield _sse_event(
+            "meta",
+            {"sources": sources, "used_rag": used_rag, "ready": False, "session_id": session_id},
+        )
         for chunk in _chunk_text(answer):
             yield _sse_event("delta", {"text": chunk})
+        upsert_session_message(
+            session_id,
+            role="assistant",
+            content=answer,
+            sources=sources,
+            used_rag=used_rag,
+        )
         yield _sse_event(
             "done",
-            {"answer": answer, "sources": sources, "used_rag": used_rag, "ready": False},
+            {
+                "answer": answer,
+                "sources": sources,
+                "used_rag": used_rag,
+                "ready": False,
+                "session_id": session_id,
+            },
         )
         return
 
@@ -298,15 +358,31 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
     ]
 
     try:
-        yield _sse_event("meta", {"sources": sources, "used_rag": used_rag, "ready": True})
+        yield _sse_event(
+            "meta",
+            {"sources": sources, "used_rag": used_rag, "ready": True, "session_id": session_id},
+        )
         answer_parts: list[str] = []
         for chunk in _request_chat_completion_stream(messages, temperature=0.2):
             answer_parts.append(chunk)
             yield _sse_event("delta", {"text": chunk})
         answer = "".join(answer_parts)
+        upsert_session_message(
+            session_id,
+            role="assistant",
+            content=answer,
+            sources=sources,
+            used_rag=used_rag,
+        )
         yield _sse_event(
             "done",
-            {"answer": answer, "sources": sources, "used_rag": used_rag, "ready": True},
+            {
+                "answer": answer,
+                "sources": sources,
+                "used_rag": used_rag,
+                "ready": True,
+                "session_id": session_id,
+            },
         )
     except Exception as exc:
         # If the provider refuses streaming, fall back to a normal completion and chunk locally.
@@ -314,6 +390,13 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
             answer, _ = _request_chat_completion(messages, temperature=0.2)
         except Exception:
             answer = local_answer(request.message, sources, used_rag)
+        upsert_session_message(
+            session_id,
+            role="assistant",
+            content=answer,
+            sources=sources,
+            used_rag=used_rag,
+        )
         yield _sse_event(
             "meta",
             {
@@ -321,11 +404,18 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
                 "used_rag": used_rag,
                 "ready": False,
                 "error": f"{exc.__class__.__name__}: {exc}",
+                "session_id": session_id,
             },
         )
         for chunk in _chunk_text(answer):
             yield _sse_event("delta", {"text": chunk})
         yield _sse_event(
             "done",
-            {"answer": answer, "sources": sources, "used_rag": used_rag, "ready": False},
+            {
+                "answer": answer,
+                "sources": sources,
+                "used_rag": used_rag,
+                "ready": False,
+                "session_id": session_id,
+            },
         )
