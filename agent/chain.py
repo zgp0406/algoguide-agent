@@ -298,16 +298,22 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
     ]
 
     try:
-        answer, _ = _request_chat_completion(messages, temperature=0.2)
         yield _sse_event("meta", {"sources": sources, "used_rag": used_rag, "ready": True})
-        for chunk in _chunk_text(answer):
+        answer_parts: list[str] = []
+        for chunk in _request_chat_completion_stream(messages, temperature=0.2):
+            answer_parts.append(chunk)
             yield _sse_event("delta", {"text": chunk})
+        answer = "".join(answer_parts)
         yield _sse_event(
             "done",
             {"answer": answer, "sources": sources, "used_rag": used_rag, "ready": True},
         )
     except Exception as exc:
-        answer = local_answer(request.message, sources, used_rag)
+        # If the provider refuses streaming, fall back to a normal completion and chunk locally.
+        try:
+            answer, _ = _request_chat_completion(messages, temperature=0.2)
+        except Exception:
+            answer = local_answer(request.message, sources, used_rag)
         yield _sse_event(
             "meta",
             {
