@@ -9,6 +9,10 @@ __pycache__/
 # Logs
 *.log
 
+# Local env files
+.env
+.env.local
+
 # Local editor history and settings
 .history/
 .vscode/

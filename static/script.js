@@ -3,8 +3,15 @@ const form = document.getElementById("chat-form");
 const input = document.getElementById("input");
 const newChatButton = document.getElementById("new-chat");
 const promptButtons = document.querySelectorAll("[data-prompt]");
+const chatBadgeText = document.getElementById("chat-badge-text");
+const statusDot = document.querySelector(".status-dot");
 
 const history = [];
+let readinessMessage = null;
+let connectionState = {
+  ready: false,
+  text: "正在检查 API 连接...",
+};
 
 function scrollToBottom() {
   messages.scrollTop = messages.scrollHeight;
@@ -31,6 +38,22 @@ function createMeta(sourceList = [], usedRag = false) {
   return meta;
 }
 
+function appendErrorMeta(messageEl, errorText) {
+  if (!errorText) return;
+
+  let meta = messageEl.querySelector(".message-meta");
+  if (!meta) {
+    meta = document.createElement("div");
+    meta.className = "message-meta";
+    messageEl.appendChild(meta);
+  }
+
+  const errorPill = document.createElement("span");
+  errorPill.className = "meta-pill";
+  errorPill.textContent = `错误：${errorText}`;
+  meta.appendChild(errorPill);
+}
+
 function appendMessage(role, text, options = {}) {
   const el = document.createElement("div");
   el.className = `message ${role}`;
@@ -49,6 +72,23 @@ function appendMessage(role, text, options = {}) {
   return el;
 }
 
+function setMessageText(messageEl, text) {
+  const content = messageEl.querySelector(".message-content");
+  if (content) {
+    content.textContent = text;
+  }
+}
+
+function appendMessageMeta(messageEl, sourceList = [], usedRag = false) {
+  if (messageEl.querySelector(".message-meta")) {
+    return;
+  }
+
+  if (sourceList.length || usedRag) {
+    messageEl.appendChild(createMeta(sourceList, usedRag));
+  }
+}
+
 function appendTyping() {
   const el = document.createElement("div");
   el.className = "message assistant";
@@ -61,11 +101,60 @@ function appendTyping() {
   return el;
 }
 
-appendMessage(
-  "assistant",
-  "你好，我可以先帮你检索笔记，再用结构化的方式讲解算法思路。",
-  { usedRag: true, sources: ["sample_algorithms.md"] }
-);
+function setConnectionStatus(ready, text, model = "") {
+  connectionState = { ready, text };
+
+  if (chatBadgeText) {
+    chatBadgeText.textContent = ready && model ? `已准备好 · ${model}` : ready ? "已准备好" : "未就绪";
+  }
+
+  if (statusDot) {
+    statusDot.classList.toggle("ready", ready);
+    statusDot.classList.toggle("not-ready", !ready);
+  }
+
+  if (readinessMessage) {
+    const content = readinessMessage.querySelector(".message-content");
+    if (content) {
+      content.textContent = text;
+    }
+  } else {
+    readinessMessage = appendMessage("assistant", text);
+  }
+}
+
+readinessMessage = appendMessage("assistant", "正在检查 API 连接...");
+
+async function loadStatus() {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const response = await fetch("/api/status", { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    const modelLabel = data.model ? `\n当前模型：${data.model}` : "";
+    const baseUrlLabel = data.base_url ? `\n接口地址：${data.base_url}` : "";
+    const details = data.error ? `\n原因：${data.error}` : "";
+    setConnectionStatus(
+      Boolean(data.ready),
+      `${data.message || "状态已更新。"}${modelLabel}${baseUrlLabel}${details}`,
+      data.model || ""
+    );
+  } catch (error) {
+    const message =
+      error?.name === "AbortError"
+        ? "API 状态检查超时，将使用本地兜底回答。"
+        : `API 状态检查失败：${error}`;
+    setConnectionStatus(false, message);
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+loadStatus();
 
 promptButtons.forEach((button) => {
   button.addEventListener("click", () => {
@@ -84,6 +173,7 @@ newChatButton?.addEventListener("click", () => {
   history.length = 0;
   input.value = "";
   input.style.height = "auto";
+  readinessMessage = appendMessage("assistant", connectionState.text);
   appendMessage(
     "assistant",
     "新对话已开始。你可以直接问一个算法问题，我会先检索再回答。",
@@ -104,6 +194,134 @@ input.addEventListener("input", () => {
   input.style.height = `${Math.min(input.scrollHeight, 220)}px`;
 });
 
+async function submitStreamingChat(text) {
+  const controller = new AbortController();
+  const response = await fetch("/api/chat/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: text, history }),
+    signal: controller.signal,
+  });
+
+  if (!response.ok || !response.body) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const assistantMessage = appendMessage("assistant", "正在生成...");
+  const assistantContent = assistantMessage.querySelector(".message-content");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+  let currentEvent = "message";
+  let currentData = [];
+  let streamedAnswer = "";
+  let meta = { sources: [], usedRag: false };
+  let sawDelta = false;
+
+  const handleEvent = (eventName, rawData) => {
+    if (!rawData) return;
+
+    let payload = null;
+    try {
+      payload = JSON.parse(rawData);
+    } catch {
+      payload = { text: rawData };
+    }
+
+    if (eventName === "meta") {
+      meta = {
+        sources: Array.isArray(payload.sources) ? payload.sources : [],
+        usedRag: Boolean(payload.used_rag),
+      };
+      if (payload.error) {
+        appendErrorMeta(assistantMessage, String(payload.error));
+      }
+      return;
+    }
+
+    if (eventName === "delta") {
+      const chunk = typeof payload.text === "string" ? payload.text : "";
+      if (!chunk) return;
+      if (!sawDelta) {
+        streamedAnswer = "";
+        sawDelta = true;
+      }
+      streamedAnswer += chunk;
+      setMessageText(assistantMessage, streamedAnswer);
+      scrollToBottom();
+      return;
+    }
+
+    if (eventName === "done") {
+      const finalAnswer = typeof payload.answer === "string" ? payload.answer : streamedAnswer;
+      if (finalAnswer && !sawDelta) {
+        setMessageText(assistantMessage, finalAnswer);
+      } else if (finalAnswer && finalAnswer !== streamedAnswer) {
+        setMessageText(assistantMessage, finalAnswer);
+      }
+
+      appendMessageMeta(
+        assistantMessage,
+        Array.isArray(payload.sources) && payload.sources.length ? payload.sources : meta.sources,
+        Boolean(payload.used_rag ?? meta.usedRag)
+      );
+    }
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+
+    let newlineIndex = buffer.indexOf("\n");
+    while (newlineIndex !== -1) {
+      const line = buffer.slice(0, newlineIndex).replace(/\r$/, "");
+      buffer = buffer.slice(newlineIndex + 1);
+
+      if (line === "") {
+        if (currentData.length) {
+          handleEvent(currentEvent, currentData.join("\n"));
+        }
+        currentEvent = "message";
+        currentData = [];
+      } else if (line.startsWith("event:")) {
+        currentEvent = line.slice(6).trim() || "message";
+      } else if (line.startsWith("data:")) {
+        currentData.push(line.slice(5).trimStart());
+      }
+
+      newlineIndex = buffer.indexOf("\n");
+    }
+  }
+
+  buffer += decoder.decode();
+  if (buffer.length) {
+    const line = buffer.replace(/\r$/, "");
+    if (line === "") {
+      if (currentData.length) {
+        handleEvent(currentEvent, currentData.join("\n"));
+      }
+    } else if (line.startsWith("event:")) {
+      currentEvent = line.slice(6).trim() || "message";
+    } else if (line.startsWith("data:")) {
+      currentData.push(line.slice(5).trimStart());
+    }
+  }
+
+  if (currentData.length) {
+    handleEvent(currentEvent, currentData.join("\n"));
+  }
+
+  if (!sawDelta && !assistantContent.textContent.trim()) {
+    setMessageText(assistantMessage, "请求完成，但没有返回内容。");
+  }
+
+  return assistantMessage;
+}
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const text = input.value.trim();
@@ -117,20 +335,32 @@ form.addEventListener("submit", async (event) => {
   const typing = appendTyping();
 
   try {
-    const response = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text, history }),
-    });
-    const data = await response.json();
     typing.remove();
-    appendMessage("assistant", data.answer, {
-      sources: data.sources || [],
-      usedRag: Boolean(data.used_rag),
-    });
-    history.push({ role: "assistant", content: data.answer });
+    const assistantMessage = await submitStreamingChat(text);
+    const assistantText = assistantMessage.querySelector(".message-content")?.textContent || "";
+    history.push({ role: "assistant", content: assistantText });
   } catch (error) {
     typing.remove();
-    appendMessage("assistant", `请求失败：${error}`);
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text, history }),
+      });
+      const data = await response.json();
+      const assistantMessage = appendMessage("assistant", data.answer, {
+        sources: data.sources || [],
+        usedRag: Boolean(data.used_rag),
+      });
+      if (data.error) {
+        appendErrorMeta(assistantMessage, data.error);
+      }
+      history.push({
+        role: "assistant",
+        content: assistantMessage.querySelector(".message-content")?.textContent || data.answer,
+      });
+    } catch (fallbackError) {
+      appendMessage("assistant", `请求失败：${fallbackError}`);
+    }
   }
 });

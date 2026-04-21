@@ -4,9 +4,10 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from agent.chain import ChatRequest, chat
+from agent.chain import ChatRequest, chat, get_api_status, stream_chat
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -33,6 +34,23 @@ def health() -> dict[str, str]:
 def chat_api(request: ChatRequest) -> dict[str, object]:
     result = chat(request)
     return result.model_dump()
+
+
+@app.post("/api/chat/stream")
+def chat_stream_api(request: ChatRequest) -> StreamingResponse:
+    return StreamingResponse(
+        stream_chat(request),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.get("/api/status")
+def api_status() -> dict[str, object]:
+    return get_api_status().model_dump()
 
 
 # Keep the frontend as the site root so the app opens directly in the browser.

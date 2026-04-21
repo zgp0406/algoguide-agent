@@ -60,12 +60,35 @@ http://127.0.0.1:8000
 ## 可选配置
 
 如果你配置了环境变量 `OPENAI_API_KEY`，项目会优先调用模型生成回答。
+当前实现会直接用标准库请求 OpenAI 兼容接口，不依赖 `openai` SDK，也会忽略系统代理变量。
+页面上的“已准备好”只表示配置已就绪，不会在加载时额外发送探测请求。
 
-可选再指定：
+推荐在项目根目录新建 `.env`：
+
+OpenAI 官方接口示例：
 
 ```bash
+OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4.1-mini
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_TIMEOUT_SECONDS=60
 ```
+
+如果你要接入 GLM 5.1，可以这样写：
+
+```bash
+OPENAI_API_KEY=你的GLM_API_KEY
+OPENAI_MODEL=glm-5.1
+OPENAI_BASE_URL=https://open.bigmodel.cn/api/paas/v4/
+OPENAI_TIMEOUT_SECONDS=60
+```
+
+说明：
+
+- `OPENAI_API_KEY` 填你在智谱控制台拿到的 key
+- `OPENAI_MODEL` 填你账号可用的模型名，示例是 `glm-5.1`
+- `OPENAI_BASE_URL` 是 OpenAI 兼容接口地址
+- `OPENAI_TIMEOUT_SECONDS` 是单次请求等待上限，网络慢时可以调大
 
 ## VS Code 使用方式
 
