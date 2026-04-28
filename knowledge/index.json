@@ -1,10 +1,22 @@
 [
   {
-    "source": "sample_algorithms.md",
-    "text": "# Dynamic Programming Notes\nDynamic programming works well when a problem has overlapping subproblems and an optimal substructure.\nTypical workflow:\n1. Define state.\n2. Define transition.\n3. Set base cases.\n4. Determine iteration order.\nExample: house robber\n- State: dp[i] means the maximum money from the first i houses.\n- Transition: dp[i] = max(dp[i - 1], dp[i - 2] + nums[i]).\n- Base cases: dp[0] = 0, dp[1] = nums[0]."
+    "source": "algorithm_answer_template.md",
+    "text": "# 算法题讲解模板\n当你给别人讲算法题时，可以尽量用一个固定模板，回答会更清晰。\n## 推荐模板\n1. 题意理解\n2. 核心思路\n3. 状态定义或数据结构\n4. 转移 / 计算过程\n5. 复杂度分析\n6. 代码实现\n## 对新手更友好的说法\n- 先说“为什么要这么做”\n- 再说“怎么做”\n- 最后说“代码怎么写”\n## 适合 AlgoGuide Agent 的回答风格\n这个项目的回答风格应该尽量接近：\n- 先解释直觉\n- 再给步骤\n- 必要时补简短代码\n- 如果用户说“讲简单一点”，就减少术语\n## 示例开头\n你可以这样开头：\n“这题的关键是把问题转成一个更容易处理的形式，然后再用动态规划 / 前缀和 / BFS 去解决。”"
   },
   {
-    "source": "sample_algorithms.md",
-    "text": "When explaining to a beginner, first describe the intuition, then the recurrence, then the code."
+    "source": "dynamic_programming.md",
+    "text": "# 动态规划入门笔记\n动态规划适合处理“重复子问题很多，而且可以从小问题推到大问题”的题目。\n## 四步法\n1. 定义状态\n2. 写出转移方程\n3. 确定初始值\n4. 决定遍历顺序\n## 例子：打家劫舍\n定义 `dp[i]` 表示前 `i` 间房子能偷到的最大金额。\n转移方程：\n```text\ndp[i] = max(dp[i - 1], dp[i - 2] + nums[i])\n```\n含义是：\n- 不偷第 `i` 间，继承前一个状态\n- 偷第 `i` 间，就不能偷 `i - 1`，要加上 `i - 2` 的结果\n## 常见误区\n- 状态定义不清楚\n- 转移方程漏掉边界\n- 先写代码，后想状态\n## 回答模板\n讲动态规划题时，建议按这个顺序讲：\n1. 先说直觉\n2. 再说状态定义\n3. 再说转移方程\n4. 最后说初始化和代码"
+  },
+  {
+    "source": "graph_bfs_dfs.md",
+    "text": "# 图论基础：BFS 和 DFS\n图论题里，BFS 和 DFS 是最基础的两种遍历方式。\n## BFS\n广度优先搜索，适合：\n- 求最短路径\n- 分层遍历\n- 找离起点最近的答案\n核心特点：\n- 用队列\n- 一层一层扩展\n## DFS\n深度优先搜索，适合：\n- 搜索所有可能\n- 回溯\n- 连通块\n- 树结构遍历\n核心特点：\n- 先深入，再回退\n- 常用递归或栈实现\n## 讲解顺序\n遇到图论题时，可以先问自己：\n1. 是不是要找最短路径？如果是，优先想 BFS\n2. 是不是要穷举路径或组合？如果是，优先想 DFS\n## 常见误区\n- BFS 和 DFS 都只会写模板，不会判断场景\n- 没有区分“图”和“树”\n- 忘了 visited，导致重复访问"
+  },
+  {
+    "source": "max_submatrix_sum.md",
+    "text": "# 最大子矩阵和\n最大子矩阵和是二维数组中的经典题，目标是找出一个连续子矩阵，使它的元素和最大。\n## 基本思路\n常见做法是把二维问题降成一维问题：\n1. 固定上边界和下边界\n2. 把中间每一列累加成一个一维数组\n3. 对这个一维数组求最大子数组和\n这样就把问题转成了“二维枚举 + 一维最大子段和”。\n## 一维部分\n一维最大子数组和可以用 Kadane 算法：\n```text\ncur = max(x, cur + x)\nbest = max(best, cur)\n```\n## 复杂度\n- 时间复杂度：`O(n^3)` 或 `O(n^2 * m)`，取决于矩阵大小和枚举方式\n- 空间复杂度：`O(m)`\n## 讲题建议\n如果用户问“最大子矩阵和怎么做”，可以按这个结构回答：\n1. 先说把二维问题变成一维\n2. 再说为什么可以固定上下边界\n3. 最后给出 Kadane 的一维处理\n## 容易出错的地方\n- 把“最大子矩阵和”误写成“最大子序列和”\n- 忘了处理全负数情况\n- 行列方向搞反"
+  },
+  {
+    "source": "prefix_sum.md",
+    "text": "# 前缀和笔记\n前缀和适合快速回答“某一段区间的和是多少”。\n## 一维前缀和\n定义：\n```text\npre[i] = nums[0] + nums[1] + ... + nums[i - 1]\n```\n那么区间 `[l, r]` 的和就是：\n```text\nsum(l, r) = pre[r + 1] - pre[l]\n```\n## 作用\n- 快速求区间和\n- 适合大量重复查询\n- 是很多题的基础工具\n## 常见场景\n- 子数组和\n- 区间统计\n- 二维前缀和\n## 二维前缀和\n二维数组里也可以做前缀和，用来快速求子矩阵和。\n如果用户问“某个矩阵区域的和”，可以先想到二维前缀和。"
   }
 ]
