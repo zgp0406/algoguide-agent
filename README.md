@@ -27,11 +27,12 @@ AlgoGuide Agent 是一个面向算法学习场景的 AI 助手原型。它把“
 
 - `app.py`：FastAPI 入口，挂载接口和静态页面
 - `agent/chain.py`：对话编排、API 调用、流式返回
-- `agent/retriever.py`：轻量检索逻辑
+- `agent/retriever.py`：语义检索逻辑
 - `agent/sessions.py`：本地会话持久化
 - `agent/env.py`：读取本地 `.env`
 - `agent/prompt.py`：回答风格约束
 - `knowledge/build_index.py`：构建本地索引
+- `knowledge/embeddings.py`：本地 embedding 模型封装
 - `knowledge/docs/`：知识库文档
 - `static/`：前端页面、样式和脚本
 - `data/sessions.json`：本地会话数据
@@ -45,17 +46,18 @@ AlgoGuide Agent 是一个面向算法学习场景的 AI 助手原型。它把“
 
 ### 2. 本地知识检索
 
-当前版本不是 FAISS 向量库，而是一个轻量索引：
+当前版本使用 `sentence-transformers + FAISS`：
 
 - 先把知识文档切块
-- 再用关键词重叠找相关片段
+- 再用本地 embedding 模型把片段编码成语义向量
+- 用 FAISS 做相似度搜索
 - 命中的内容会拼到模型输入里
 
 这个版本的好处是：
 
-- 容易跑起来
-- 容易解释
-- 方便先把 MVP 做通
+- 比纯关键词重叠更能理解语义
+- 检索效果更适合自然语言问题
+- 仍然可以本地构建索引，不需要额外的在线 embedding API
 
 ### 3. 模型调用
 
@@ -123,11 +125,26 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 pip install -r requirements.txt
 ```
 
+如果你要启用语义检索，再额外安装：
+
+```bash
+pip install -r requirements.semantic.txt
+```
+
 ### 4. 构建本地索引
 
 ```bash
 python knowledge/build_index.py
 ```
+
+它会生成：
+
+- `knowledge/index_meta.json`：片段元数据
+- `knowledge/index.faiss`：FAISS 向量索引
+
+第一次运行时，`sentence-transformers` 可能会自动下载 embedding 模型。
+如果你的网络环境不方便访问 PyPI，先用基础依赖把项目跑起来，再在有网络或有离线 wheel 的环境里装语义检索依赖。
+如果你的环境暂时装不上 FAISS，脚本也会先生成元数据，服务会自动回退到本地线性相似度检索。
 
 ### 5. 启动服务
 
@@ -169,6 +186,7 @@ OPENAI_TIMEOUT_SECONDS=60
 - `OPENAI_MODEL`：模型名称
 - `OPENAI_BASE_URL`：OpenAI 兼容接口地址
 - `OPENAI_TIMEOUT_SECONDS`：请求超时时间，网络慢时可以调大
+- `EMBEDDING_MODEL_NAME`：本地 embedding 模型名称，默认是 `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`
 
 ## 为什么要有 `.env.example`
 
@@ -180,7 +198,7 @@ OPENAI_TIMEOUT_SECONDS=60
 
 如果你后面想把这个项目继续做强，最值得做的顺序是：
 
-1. 把轻量检索升级成 FAISS 向量检索
+1. 给 FAISS 检索加更大的 embedding 模型，比如 `bge-m3`
 2. 优化超时、重试和错误提示
 3. 给回答加上来源引用
 4. 把会话摘要做出来，提升多轮对话质量
@@ -190,7 +208,7 @@ OPENAI_TIMEOUT_SECONDS=60
 
 - **Agent**：会调用工具的智能助手，不只是聊天
 - **RAG**：检索增强生成，先找资料，再让模型回答
-- **轻量索引**：当前项目里的简化检索方式，基于文本切块和关键词匹配
+- **Sentence Transformers**：常用的文本 embedding 框架
 - **向量索引**：把文本转成向量后做相似度检索
 - **FAISS**：常用的向量检索库
 - **API Key**：调用外部模型时使用的密钥

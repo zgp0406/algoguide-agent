@@ -92,8 +92,11 @@ def _request_chat_completion(
         },
     )
 
-    with _proxyless_opener().open(request, timeout=_API_TIMEOUT_SECONDS) as response:
-        response_data = json.loads(response.read().decode("utf-8"))
+    try:
+        with _proxyless_opener().open(request, timeout=_API_TIMEOUT_SECONDS) as response:
+            response_data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(_format_http_error(exc)) from exc
 
     choices = response_data.get("choices") or []
     if not choices:
@@ -102,6 +105,7 @@ def _request_chat_completion(
     message = choices[0].get("message") or {}
     content = message.get("content") or ""
     return content, response_data
+
 
 
 def _request_chat_completion_stream(
@@ -131,27 +135,30 @@ def _request_chat_completion_stream(
         },
     )
 
-    with _proxyless_opener().open(request, timeout=_API_TIMEOUT_SECONDS) as response:
-        for raw_line in response:
-            line = raw_line.decode("utf-8", errors="replace").strip()
-            if not line:
-                continue
-            if not line.startswith("data:"):
-                continue
+    try:
+        with _proxyless_opener().open(request, timeout=_API_TIMEOUT_SECONDS) as response:
+            for raw_line in response:
+                line = raw_line.decode("utf-8", errors="replace").strip()
+                if not line:
+                    continue
+                if not line.startswith("data:"):
+                    continue
 
-            data = line[5:].strip()
-            if data == "[DONE]":
-                break
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    break
 
-            chunk = json.loads(data)
-            choices = chunk.get("choices") or []
-            if not choices:
-                continue
+                chunk = json.loads(data)
+                choices = chunk.get("choices") or []
+                if not choices:
+                    continue
 
-            delta = choices[0].get("delta") or {}
-            content = delta.get("content") or ""
-            if content:
-                yield content
+                delta = choices[0].get("delta") or {}
+                content = delta.get("content") or ""
+                if content:
+                    yield content
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(_format_http_error(exc)) from exc
 
 
 def _format_http_error(exc: urllib.error.HTTPError) -> str:

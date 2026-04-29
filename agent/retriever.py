@@ -4,15 +4,16 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Any
+
+from knowledge.embeddings import DEFAULT_EMBEDDING_MODEL_NAME, embed_text, resolve_model_name
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 KNOWLEDGE_DIR = BASE_DIR / "knowledge"
-DOCS_DIR = KNOWLEDGE_DIR / "docs"
-INDEX_PATH = KNOWLEDGE_DIR / "index.json"
-
-
+FAISS_INDEX_PATH = KNOWLEDGE_DIR / "index.faiss"
+META_PATH = KNOWLEDGE_DIR / "index_meta.json"
+LEGACY_INDEX_PATH = KNOWLEDGE_DIR / "index.json"
 TOKEN_RE = re.compile(r"[A-Za-z0-9\u4e00-\u9fff]+")
 
 
@@ -22,68 +23,115 @@ class KnowledgeChunk:
     text: str
 
 
-def tokenize(text: str) -> set[str]:
-    return set(TOKEN_RE.findall(text.lower()))
+@dataclass
+class KnowledgeStore:
+    chunks: list[KnowledgeChunk]
+    model_name: str
+    faiss_index: Any | None = None
+    signature: tuple[float, float] | None = None
 
 
-def load_chunks() -> list[KnowledgeChunk]:
-    """
-    加载知识块列表，如果存在索引文件则直接加载，否则从文档目录创建
-    返回:
-        list[KnowledgeChunk]: 包含知识块的列表，如果没有内容则返回空列表
-    """
-    if INDEX_PATH.exists():
-        # 如果索引文件存在，直接读取并解析为KnowledgeChunk对象列表
-        payload = json.loads(INDEX_PATH.read_text(encoding="utf-8"))
-        return [KnowledgeChunk(**item) for item in payload]
+def _load_meta() -> tuple[list[KnowledgeChunk], str]:
+    source_path = META_PATH if META_PATH.exists() else LEGACY_INDEX_PATH
+    if not source_path.exists():
+        return [], resolve_model_name(DEFAULT_EMBEDDING_MODEL_NAME)
+
+    payload = json.loads(source_path.read_text(encoding="utf-8"))
+    if isinstance(payload, dict):
+        model_name = resolve_model_name(str(payload.get("model_name") or ""))
+        items = payload.get("chunks")
+    else:
+        model_name = resolve_model_name(DEFAULT_EMBEDDING_MODEL_NAME)
+        items = payload
+
+    if not isinstance(items, list):
+        return [], model_name
 
     chunks: list[KnowledgeChunk] = []
-    if not DOCS_DIR.exists():
-        # 如果文档目录不存在，直接返回空列表
-        return chunks
-
-    # 遍历文档目录中的所有文件
-    for path in DOCS_DIR.glob("*"):
-        # 只处理.md和.txt文件
-        if path.suffix.lower() not in {".md", ".txt"}:
+    for item in items:
+        if not isinstance(item, dict):
             continue
-        text = path.read_text(encoding="utf-8")
-        # The first version uses lightweight text chunks instead of a vector store.
-        for part in split_text(text):
-            chunks.append(KnowledgeChunk(source=path.name, text=part))
-    return chunks
+        source = str(item.get("source") or "").strip()
+        text = str(item.get("text") or "").strip()
+        if source and text:
+            chunks.append(KnowledgeChunk(source=source, text=text))
+    return chunks, model_name
 
 
-def split_text(text: str, chunk_size: int = 500) -> list[str]:
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if not lines:
-        return []
+def _load_faiss_index() -> Any | None:
+    if not FAISS_INDEX_PATH.exists():
+        return None
 
-    chunks: list[str] = []
-    current = ""
-    for line in lines:
-        if len(current) + len(line) + 1 <= chunk_size:
-            current = f"{current}\n{line}".strip()
-        else:
-            if current:
-                chunks.append(current)
-            current = line
-    if current:
-        chunks.append(current)
-    return chunks
+    try:
+        import faiss
+    except ImportError:
+        return None
+
+    return faiss.read_index(str(FAISS_INDEX_PATH))
+
+
+_STORE_CACHE: KnowledgeStore | None = None
+
+
+def _store_signature() -> tuple[float, float] | None:
+    if not META_PATH.exists() and not FAISS_INDEX_PATH.exists():
+        return None
+    meta_mtime = META_PATH.stat().st_mtime if META_PATH.exists() else 0.0
+    index_mtime = FAISS_INDEX_PATH.stat().st_mtime if FAISS_INDEX_PATH.exists() else 0.0
+    return meta_mtime, index_mtime
+
+
+def _load_store() -> KnowledgeStore:
+    chunks, model_name = _load_meta()
+    return KnowledgeStore(
+        chunks=chunks,
+        model_name=model_name,
+        faiss_index=_load_faiss_index(),
+        signature=_store_signature(),
+    )
+
+
+def _get_store() -> KnowledgeStore:
+    global _STORE_CACHE
+
+    signature = _store_signature()
+    if _STORE_CACHE is None or _STORE_CACHE.signature != signature:
+        _STORE_CACHE = _load_store()
+    return _STORE_CACHE
+
+
+def _score_linear(query_text: str, chunk_text: str) -> float:
+    query_tokens = set(TOKEN_RE.findall(query_text.lower()))
+    chunk_tokens = set(TOKEN_RE.findall(chunk_text.lower()))
+    return float(len(query_tokens & chunk_tokens))
 
 
 def retrieve(query: str, k: int = 3) -> list[KnowledgeChunk]:
-    chunks = load_chunks()
-    if not chunks:
+    store = _get_store()
+    if not store.chunks:
         return []
 
-    query_tokens = tokenize(query)
-    scored: list[tuple[int, KnowledgeChunk]] = []
-    for chunk in chunks:
-        # Simple token overlap keeps the MVP easy to run and explain.
-        score = len(query_tokens & tokenize(chunk.text))
-        if score:
+    if store.faiss_index is not None:
+        try:
+            import numpy as np
+
+            query_vector = embed_text(query, model_name=store.model_name)
+            query_array = np.asarray([query_vector], dtype="float32")
+            _, indices = store.faiss_index.search(query_array, k)
+            result: list[KnowledgeChunk] = []
+            for index in indices[0]:
+                if index < 0 or index >= len(store.chunks):
+                    continue
+                result.append(store.chunks[int(index)])
+            return result
+        except Exception:
+            # If the embedding model cannot be loaded, fall back to a simple lexical score.
+            pass
+
+    scored: list[tuple[float, KnowledgeChunk]] = []
+    for chunk in store.chunks:
+        score = _score_linear(query, chunk.text)
+        if score > 0:
             scored.append((score, chunk))
 
     scored.sort(key=lambda item: item[0], reverse=True)
