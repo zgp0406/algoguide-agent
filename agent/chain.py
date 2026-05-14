@@ -48,7 +48,7 @@ _API_STATUS_CACHE: tuple[float, ApiStatusResponse] | None = None
 _API_STATUS_TTL_SECONDS = 60.0
 _API_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "60"))
 _MAX_RECENT_HISTORY_MESSAGES = 8
-_DEFAULT_KNOWLEDGE_BASE_NAME = "本地算法知识库"
+_DEFAULT_KNOWLEDGE_BASE_NAME = "全库检索"
 
 
 def _api_config() -> tuple[str, str, str]:
@@ -194,15 +194,22 @@ def _excerpt_text(text: str, limit: int = 160) -> str:
 def _format_evidence_items(chunks: list[object]) -> list[dict[str, object]]:
     evidence: list[dict[str, object]] = []
     for chunk in chunks:
+        knowledge_base_id = str(getattr(chunk, "knowledge_base_id", "") or "").strip()
+        knowledge_base_name = str(getattr(chunk, "knowledge_base_name", "") or "").strip()
         source = str(getattr(chunk, "source", "") or "").strip()
         text = str(getattr(chunk, "text", "") or "").strip()
+        location = str(getattr(chunk, "location", "") or "").strip()
         score = getattr(chunk, "score", None)
         if not source or not text:
             continue
         item: dict[str, object] = {
+            "knowledge_base_id": knowledge_base_id,
+            "knowledge_base_name": knowledge_base_name or _knowledge_base_name(),
             "source": source,
             "excerpt": _excerpt_text(text),
         }
+        if location:
+            item["location"] = location
         if score is not None:
             try:
                 item["score"] = float(score)
@@ -400,8 +407,9 @@ def build_context(message: str) -> tuple[str, list[str], list[dict[str, object]]
     context_lines = []
     sources = []
     for index, chunk in enumerate(chunks, start=1):
+        location_text = f" | 位置：{chunk.location}" if getattr(chunk, "location", "") else ""
         context_lines.append(
-            f"{index}. 来源：{chunk.source}\n"
+            f"{index}. 知识库：{chunk.knowledge_base_name or _knowledge_base_name()} | 来源：{chunk.source}{location_text}\n"
             f"   片段：{chunk.text}"
         )
         sources.append(chunk.source)
@@ -428,16 +436,22 @@ def local_answer(
     source_text = f"参考来源：{', '.join(sorted(set(sources)))}。" if sources else ""
     evidence_lines = []
     for item in evidence or []:
+        kb_name = str(item.get("knowledge_base_name") or "").strip()
         source = str(item.get("source") or "").strip()
         excerpt = str(item.get("excerpt") or "").strip()
+        location = str(item.get("location") or "").strip()
         if not source and not excerpt:
             continue
+        prefix = f"{kb_name} · " if kb_name else ""
         if source and excerpt:
-            evidence_lines.append(f"- {source}：{excerpt}")
+            line = f"- {prefix}{source}：{excerpt}"
         elif source:
-            evidence_lines.append(f"- {source}")
+            line = f"- {prefix}{source}"
         else:
-            evidence_lines.append(f"- {excerpt}")
+            line = f"- {prefix}{excerpt}"
+        if location:
+            line = f"{line}（{location}）"
+        evidence_lines.append(line)
     evidence_text = ""
     if evidence_lines:
         evidence_text = "\n\n参考片段：\n" + "\n".join(evidence_lines)

@@ -23,7 +23,8 @@ def _load_model(resolved_name: str):
             "sentence-transformers is not installed. Install it with `pip install -r requirements.txt`."
         ) from exc
 
-    return SentenceTransformer(resolved_name)
+    allow_download = os.getenv("EMBEDDING_ALLOW_DOWNLOAD", "").strip().lower() in {"1", "true", "yes", "on"}
+    return SentenceTransformer(resolved_name, local_files_only=not allow_download)
 
 
 def load_model(model_name: str | None = None):

@@ -25,6 +25,31 @@
           <div id="recent-chats" class="session-list" aria-live="polite"></div>
         </div>
 
+        <div class="sidebar-group">
+          <p class="sidebar-label">Knowledge base upload</p>
+          <div class="kb-panel">
+            <select id="knowledge-base-select" class="kb-select" aria-label="选择目标知识库"></select>
+            <input
+              id="knowledge-base-name"
+              class="kb-name-input"
+              type="text"
+              placeholder="新知识库名称"
+              hidden
+            />
+            <input
+              id="knowledge-file"
+              class="kb-file-input"
+              type="file"
+              accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            />
+            <button type="button" class="kb-upload-button" id="knowledge-upload-btn">上传并预览</button>
+          </div>
+
+          <div id="knowledge-preview" class="knowledge-preview knowledge-preview-empty">
+            上传 PDF 或 Word 文档后，会在这里看到摘要和切块预览。
+          </div>
+        </div>
+
         <div class="sidebar-group sidebar-bottom">
           <p class="sidebar-label">Shortcuts</p>
           <button type="button" class="sidebar-item" data-prompt="给我一个 C++ 版的动态规划例题。">C++ example</button>

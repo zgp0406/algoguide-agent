@@ -19,14 +19,20 @@ TOKEN_RE = re.compile(r"[A-Za-z0-9\u4e00-\u9fff]+")
 
 @dataclass
 class KnowledgeChunk:
+    knowledge_base_id: str
+    knowledge_base_name: str
     source: str
     text: str
+    location: str = ""
 
 
 @dataclass
 class RetrievedChunk:
+    knowledge_base_id: str
+    knowledge_base_name: str
     source: str
     text: str
+    location: str
     score: float
 
 
@@ -61,7 +67,15 @@ def _load_meta() -> tuple[list[KnowledgeChunk], str]:
         source = str(item.get("source") or "").strip()
         text = str(item.get("text") or "").strip()
         if source and text:
-            chunks.append(KnowledgeChunk(source=source, text=text))
+            chunks.append(
+                KnowledgeChunk(
+                    knowledge_base_id=str(item.get("knowledge_base_id") or ""),
+                    knowledge_base_name=str(item.get("knowledge_base_name") or "全库检索"),
+                    source=source,
+                    text=text,
+                    location=str(item.get("location") or ""),
+                )
+            )
     return chunks, model_name
 
 
@@ -146,8 +160,11 @@ def retrieve_with_scores(query: str, k: int = 3) -> list[RetrievedChunk]:
                 chunk = store.chunks[int(index)]
                 result.append(
                     RetrievedChunk(
+                        knowledge_base_id=chunk.knowledge_base_id,
+                        knowledge_base_name=chunk.knowledge_base_name,
                         source=chunk.source,
                         text=chunk.text,
+                        location=chunk.location,
                         score=float(score),
                     )
                 )
@@ -162,8 +179,11 @@ def retrieve_with_scores(query: str, k: int = 3) -> list[RetrievedChunk]:
         if score > 0:
             scored.append(
                 RetrievedChunk(
+                    knowledge_base_id=chunk.knowledge_base_id,
+                    knowledge_base_name=chunk.knowledge_base_name,
                     source=chunk.source,
                     text=chunk.text,
+                    location=chunk.location,
                     score=float(score),
                 )
             )
@@ -173,4 +193,13 @@ def retrieve_with_scores(query: str, k: int = 3) -> list[RetrievedChunk]:
 
 
 def retrieve(query: str, k: int = 3) -> list[KnowledgeChunk]:
-    return [KnowledgeChunk(source=chunk.source, text=chunk.text) for chunk in retrieve_with_scores(query, k=k)]
+    return [
+        KnowledgeChunk(
+            knowledge_base_id=chunk.knowledge_base_id,
+            knowledge_base_name=chunk.knowledge_base_name,
+            source=chunk.source,
+            text=chunk.text,
+            location=chunk.location,
+        )
+        for chunk in retrieve_with_scores(query, k=k)
+    ]

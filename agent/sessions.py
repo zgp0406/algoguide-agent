@@ -187,14 +187,23 @@ def _normalize_message(message: sqlite3.Row) -> dict[str, Any]:
             for item in evidence:
                 if not isinstance(item, dict):
                     continue
+                kb_id = str(item.get("knowledge_base_id") or "").strip()
+                kb_name = str(item.get("knowledge_base_name") or "").strip()
                 source = str(item.get("source") or "").strip()
                 excerpt = str(item.get("excerpt") or item.get("text") or "").strip()
+                location = str(item.get("location") or "").strip()
                 score = item.get("score")
                 evidence_item: dict[str, Any] = {}
+                if kb_id:
+                    evidence_item["knowledge_base_id"] = kb_id
+                if kb_name:
+                    evidence_item["knowledge_base_name"] = kb_name
                 if source:
                     evidence_item["source"] = source
                 if excerpt:
                     evidence_item["excerpt"] = excerpt
+                if location:
+                    evidence_item["location"] = location
                 if score is not None:
                     try:
                         evidence_item["score"] = float(score)
