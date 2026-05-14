@@ -11,24 +11,43 @@ const history = [];
 let readinessMessage = null;
 let currentSessionId = null;
 let recentSessions = [];
+let sessionContextMenu = null;
+let sessionContextTarget = null;
+// 用来防止用户在上一轮还没结束时重复提交，导致历史和会话状态错乱。
+let isSubmitting = false;
+// 这个状态专门显示“发送中 / 生成中”，和 API 就绪状态分开管理。
+let chatPhaseText = "";
 let connectionState = {
   ready: false,
   text: "正在检查 API 连接...",
+  model: "",
 };
 
 function scrollToBottom() {
   messages.scrollTop = messages.scrollHeight;
 }
 
-function createMeta(sourceList = [], usedRag = false) {
+function createMeta(sourceList = [], usedRag = false, knowledgeBase = "") {
   const meta = document.createElement("div");
   meta.className = "message-meta";
 
-  if (usedRag) {
-    const rag = document.createElement("span");
-    rag.className = "meta-pill";
-    rag.textContent = "RAG 已启用";
-    meta.appendChild(rag);
+  if (knowledgeBase) {
+    const kb = document.createElement("span");
+    kb.className = "meta-pill";
+    if (usedRag) {
+      kb.textContent = `知识库：${knowledgeBase}`;
+      kb.title = `知识库：${knowledgeBase}`;
+      meta.appendChild(kb);
+
+      const rag = document.createElement("span");
+      rag.className = "meta-pill";
+      rag.textContent = "RAG 已启用";
+      meta.appendChild(rag);
+    } else {
+      kb.textContent = `知识库：${knowledgeBase} · 模型推理`;
+      kb.title = "知识库已启用，未找到直接相关内容。本次回答主要基于模型推理。";
+      meta.appendChild(kb);
+    }
   }
 
   if (sourceList.length) {
@@ -39,6 +58,61 @@ function createMeta(sourceList = [], usedRag = false) {
   }
 
   return meta;
+}
+
+function formatEvidenceScore(score) {
+  if (typeof score !== "number" || Number.isNaN(score)) {
+    return "";
+  }
+  if (score <= 1) {
+    return `相关度 ${Math.round(score * 100)}%`;
+  }
+  return `分数 ${score.toFixed(2)}`;
+}
+
+function createEvidenceBlock(evidence = []) {
+  const details = document.createElement("details");
+  details.className = "message-evidence";
+
+  const summary = document.createElement("summary");
+  summary.textContent = `参考片段 ${evidence.length ? `(${evidence.length})` : ""}`.trim();
+  details.appendChild(summary);
+
+  const list = document.createElement("div");
+  list.className = "evidence-list";
+
+  evidence.forEach((item, index) => {
+    const card = document.createElement("article");
+    card.className = "evidence-item";
+
+    const heading = document.createElement("div");
+    heading.className = "evidence-heading";
+
+    const source = document.createElement("span");
+    source.className = "evidence-source";
+    source.textContent = item?.source ? String(item.source) : `来源 ${index + 1}`;
+    heading.appendChild(source);
+
+    const score = formatEvidenceScore(Number(item?.score));
+    if (score) {
+      const scoreEl = document.createElement("span");
+      scoreEl.className = "evidence-score";
+      scoreEl.textContent = score;
+      heading.appendChild(scoreEl);
+    }
+
+    card.appendChild(heading);
+
+    const excerpt = document.createElement("p");
+    excerpt.className = "evidence-excerpt";
+    excerpt.textContent = item?.excerpt ? String(item.excerpt) : "没有可展示的片段。";
+    card.appendChild(excerpt);
+
+    list.appendChild(card);
+  });
+
+  details.appendChild(list);
+  return details;
 }
 
 function appendErrorMeta(messageEl, errorText) {
@@ -66,8 +140,12 @@ function appendMessage(role, text, options = {}) {
   content.textContent = text;
   el.appendChild(content);
 
-  if (role === "assistant" && (options.sources?.length || options.usedRag)) {
-    el.appendChild(createMeta(options.sources, options.usedRag));
+  if (role === "assistant" && (options.sources?.length || options.usedRag || options.knowledgeBase)) {
+    el.appendChild(createMeta(options.sources, options.usedRag, options.knowledgeBase));
+  }
+
+  if (role === "assistant" && Array.isArray(options.evidence) && options.evidence.length) {
+    el.appendChild(createEvidenceBlock(options.evidence));
   }
 
   messages.appendChild(el);
@@ -82,14 +160,21 @@ function setMessageText(messageEl, text) {
   }
 }
 
-function appendMessageMeta(messageEl, sourceList = [], usedRag = false) {
+function appendMessageMeta(messageEl, sourceList = [], usedRag = false, knowledgeBase = "") {
   if (messageEl.querySelector(".message-meta")) {
     return;
   }
 
-  if (sourceList.length || usedRag) {
-    messageEl.appendChild(createMeta(sourceList, usedRag));
+  if (sourceList.length || usedRag || knowledgeBase) {
+    messageEl.appendChild(createMeta(sourceList, usedRag, knowledgeBase));
   }
+}
+
+function appendMessageEvidence(messageEl, evidence = []) {
+  if (!Array.isArray(evidence) || !evidence.length || messageEl.querySelector(".message-evidence")) {
+    return;
+  }
+  messageEl.appendChild(createEvidenceBlock(evidence));
 }
 
 function formatSessionTime(value) {
@@ -102,6 +187,91 @@ function formatSessionTime(value) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function ensureSessionContextMenu() {
+  if (sessionContextMenu) return sessionContextMenu;
+
+  const menu = document.createElement("div");
+  menu.className = "session-context-menu";
+  menu.hidden = true;
+  menu.innerHTML = `
+    <button type="button" data-action="rename">重命名</button>
+    <button type="button" data-action="delete" class="danger">删除</button>
+  `;
+
+  menu.addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-action]");
+    if (!button || !sessionContextTarget) return;
+    const action = button.dataset.action;
+    const target = sessionContextTarget;
+    hideSessionContextMenu();
+    if (action === "rename") {
+      await renameSession(target.id, target.title || "新对话");
+    } else if (action === "delete") {
+      await deleteSession(target.id);
+    }
+  });
+
+  document.body.appendChild(menu);
+  sessionContextMenu = menu;
+  return menu;
+}
+
+function hideSessionContextMenu() {
+  if (!sessionContextMenu) return;
+  sessionContextMenu.hidden = true;
+  sessionContextTarget = null;
+}
+
+function showSessionContextMenu(session, x, y) {
+  const menu = ensureSessionContextMenu();
+  sessionContextTarget = session;
+  menu.hidden = false;
+  menu.style.left = "0px";
+  menu.style.top = "0px";
+
+  const { innerWidth, innerHeight } = window;
+  const rect = menu.getBoundingClientRect();
+  const width = rect.width || 160;
+  const height = rect.height || 92;
+  const left = Math.min(x, innerWidth - width - 8);
+  const top = Math.min(y, innerHeight - height - 8);
+  menu.style.left = `${Math.max(8, left)}px`;
+  menu.style.top = `${Math.max(8, top)}px`;
+}
+
+async function deleteSession(sessionId) {
+  const ok = window.confirm("确定删除这个会话吗？删除后无法恢复。");
+  if (!ok) return;
+
+  try {
+    const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    if (!data.deleted) {
+      throw new Error("删除失败");
+    }
+
+    recentSessions = recentSessions.filter((item) => item.id !== sessionId);
+    if (currentSessionId === sessionId) {
+      currentSessionId = recentSessions[0]?.id || null;
+      history.length = 0;
+      if (currentSessionId) {
+        await openSession(currentSessionId, { silent: true });
+      } else {
+        renderConversation([], true);
+      }
+    } else {
+      renderRecentChats(recentSessions);
+    }
+  } catch (error) {
+    window.alert(`删除会话失败：${error}`);
+  }
 }
 
 function renderRecentChats(sessions) {
@@ -117,15 +287,21 @@ function renderRecentChats(sessions) {
   }
 
   sessions.forEach((session) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `session-item${session.id === currentSessionId ? " active" : ""}`;
-    button.dataset.sessionId = session.id;
+    const item = document.createElement("div");
+    item.className = `session-item${session.id === currentSessionId ? " active" : ""}`;
+    item.dataset.sessionId = session.id;
+    item.tabIndex = 0;
+    item.setAttribute("role", "button");
+
+    const header = document.createElement("div");
+    header.className = "session-item-header";
 
     const title = document.createElement("div");
     title.className = "session-title";
     title.textContent = session.title || "新对话";
-    button.appendChild(title);
+    title.title = session.title || "新对话";
+    header.appendChild(title);
+    item.appendChild(header);
 
     const meta = document.createElement("div");
     meta.className = "session-meta";
@@ -138,14 +314,82 @@ function renderRecentChats(sessions) {
       parts.push(time);
     }
     meta.textContent = parts.join(" · ");
-    button.appendChild(meta);
+    item.appendChild(meta);
 
-    button.addEventListener("click", () => {
+    if (session.summary) {
+      const summary = document.createElement("div");
+      summary.className = "session-summary";
+      summary.textContent = session.summary;
+      item.appendChild(summary);
+    }
+
+    item.addEventListener("click", () => {
       openSession(session.id);
     });
 
-    recentChatsList.appendChild(button);
+    item.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      showSessionContextMenu(
+        {
+          id: session.id,
+          title: session.title || "新对话",
+        },
+        event.clientX,
+        event.clientY
+      );
+    });
+
+    item.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openSession(session.id);
+      }
+    });
+
+    recentChatsList.appendChild(item);
   });
+}
+
+async function renameSession(sessionId, currentTitle) {
+  const nextTitle = window.prompt("请输入新的会话标题", currentTitle || "新对话");
+  if (nextTitle === null) return;
+
+  const title = nextTitle.trim();
+  if (!title) {
+    window.alert("标题不能为空。");
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/title`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    if (data.session) {
+      if (currentSessionId === sessionId) {
+        currentSessionId = String(data.session.id || sessionId);
+      }
+      recentSessions = [
+        {
+          id: String(data.session.id || sessionId),
+          title: String(data.session.title || title),
+          updated_at: String(data.session.updated_at || ""),
+          summary: String(data.session.summary || ""),
+          message_count: Array.isArray(data.session.messages) ? data.session.messages.length : 0,
+        },
+        ...recentSessions.filter((item) => item.id !== sessionId),
+      ].slice(0, 10);
+      renderRecentChats(recentSessions);
+    }
+  } catch (error) {
+    window.alert(`修改标题失败：${error}`);
+  }
 }
 
 function renderConversation(messagesData = [], includeIntro = false) {
@@ -156,14 +400,16 @@ function renderConversation(messagesData = [], includeIntro = false) {
     appendMessage(
       "assistant",
       "新对话已开始。你可以直接问一个算法问题，我会先检索再回答。",
-      { usedRag: true, sources: ["sample_algorithms.md"] }
+      { usedRag: true, sources: ["sample_algorithms.md"], knowledgeBase: "本地算法知识库" }
     );
   }
 
   messagesData.forEach((message) => {
     appendMessage(message.role, message.content, {
       sources: Array.isArray(message.sources) ? message.sources : [],
+      evidence: Array.isArray(message.evidence) ? message.evidence : [],
       usedRag: Boolean(message.used_rag),
+      knowledgeBase: "本地算法知识库",
     });
   });
 }
@@ -180,12 +426,43 @@ function appendTyping() {
   return el;
 }
 
-function setConnectionStatus(ready, text, model = "") {
-  connectionState = { ready, text };
+// 统一更新右上角状态文案，既能显示连接状态，也能显示发送/生成过程。
+function renderChatBadge() {
+  if (!chatBadgeText) return;
 
-  if (chatBadgeText) {
-    chatBadgeText.textContent = ready && model ? `已准备好 · ${model}` : ready ? "已准备好" : "未就绪";
+  if (chatPhaseText) {
+    chatBadgeText.textContent = chatPhaseText;
+    return;
   }
+
+  const { ready, model } = connectionState;
+  chatBadgeText.textContent = ready && model ? `已准备好 · ${model}` : ready ? "已准备好" : "未就绪";
+}
+
+function setChatPhase(text = "") {
+  chatPhaseText = text;
+  renderChatBadge();
+}
+
+function setComposerBusy(busy) {
+  const submitButton = form.querySelector('button[type="submit"]');
+  if (input) {
+    input.disabled = busy;
+  }
+  if (submitButton) {
+    submitButton.disabled = busy;
+  }
+  if (newChatButton) {
+    newChatButton.disabled = busy;
+  }
+  promptButtons.forEach((button) => {
+    button.disabled = busy;
+  });
+}
+
+function setConnectionStatus(ready, text, model = "") {
+  connectionState = { ready, text, model };
+  renderChatBadge();
 
   if (statusDot) {
     statusDot.classList.toggle("ready", ready);
@@ -200,6 +477,26 @@ function setConnectionStatus(ready, text, model = "") {
   } else {
     readinessMessage = appendMessage("assistant", text);
   }
+}
+
+// 把最新会话摘要合并到左侧列表，避免每次回复都重新请求整份列表。
+function upsertRecentSession(session) {
+  if (!session || !session.id) return;
+
+  const normalized = {
+    id: String(session.id),
+    title: String(session.title || "新对话"),
+    updated_at: String(session.updated_at || ""),
+    message_count: Number(session.message_count || 0),
+    summary: String(session.summary || ""),
+  };
+
+  recentSessions = [
+    normalized,
+    ...recentSessions.filter((item) => item.id !== normalized.id),
+  ].slice(0, 10);
+
+  renderRecentChats(recentSessions);
 }
 
 readinessMessage = appendMessage("assistant", "正在检查 API 连接...");
@@ -284,6 +581,19 @@ async function openSession(sessionId, options = {}) {
 loadStatus();
 loadRecentChats();
 
+document.addEventListener("click", () => {
+  hideSessionContextMenu();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    hideSessionContextMenu();
+  }
+});
+
+window.addEventListener("scroll", hideSessionContextMenu, true);
+window.addEventListener("resize", hideSessionContextMenu);
+
 promptButtons.forEach((button) => {
   button.addEventListener("click", () => {
     const prompt = button.dataset.prompt || "";
@@ -331,6 +641,8 @@ async function submitStreamingChat(text) {
     throw new Error(`HTTP ${response.status}`);
   }
 
+  // 这一步说明请求已经发出并拿到了流式响应，界面切到“生成中”更直观。
+  setChatPhase("生成中...");
   const assistantMessage = appendMessage("assistant", "正在生成...");
   const assistantContent = assistantMessage.querySelector(".message-content");
   const reader = response.body.getReader();
@@ -339,7 +651,8 @@ async function submitStreamingChat(text) {
   let currentEvent = "message";
   let currentData = [];
   let streamedAnswer = "";
-  let meta = { sources: [], usedRag: false };
+  let meta = { sources: [], usedRag: false, knowledgeBase: "" };
+  let evidence = [];
   let sawDelta = false;
   let streamedSessionId = currentSessionId;
 
@@ -361,9 +674,15 @@ async function submitStreamingChat(text) {
       meta = {
         sources: Array.isArray(payload.sources) ? payload.sources : [],
         usedRag: Boolean(payload.used_rag),
+        knowledgeBase: String(payload.knowledge_base || ""),
       };
+      evidence = Array.isArray(payload.evidence) ? payload.evidence : evidence;
       if (payload.error) {
         appendErrorMeta(assistantMessage, String(payload.error));
+      }
+      appendMessageEvidence(assistantMessage, evidence);
+      if (payload.session) {
+        upsertRecentSession(payload.session);
       }
       return;
     }
@@ -396,8 +715,16 @@ async function submitStreamingChat(text) {
       appendMessageMeta(
         assistantMessage,
         Array.isArray(payload.sources) && payload.sources.length ? payload.sources : meta.sources,
-        Boolean(payload.used_rag ?? meta.usedRag)
+        Boolean(payload.used_rag ?? meta.usedRag),
+        String(payload.knowledge_base || meta.knowledgeBase || "")
       );
+      appendMessageEvidence(
+        assistantMessage,
+        Array.isArray(payload.evidence) && payload.evidence.length ? payload.evidence : evidence
+      );
+      if (payload.session) {
+        upsertRecentSession(payload.session);
+      }
     }
   };
 
@@ -457,6 +784,7 @@ async function submitStreamingChat(text) {
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (isSubmitting) return;
   const text = input.value.trim();
   if (!text) return;
 
@@ -465,20 +793,30 @@ form.addEventListener("submit", async (event) => {
   input.value = "";
   input.style.height = "auto";
 
+  // 先把按钮锁住，并把状态切到“发送中”，避免用户以为页面没有反应。
+  setChatPhase("发送中...");
   const typing = appendTyping();
+  isSubmitting = true;
+  setComposerBusy(true);
 
   try {
-    typing.remove();
+    if (typing.isConnected) {
+      typing.remove();
+    }
     const result = await submitStreamingChat(text);
     const assistantMessage = result.assistantMessage;
     if (result.sessionId) {
       currentSessionId = result.sessionId;
     }
+    if (result.session) {
+      upsertRecentSession(result.session);
+    }
     const assistantText = assistantMessage.querySelector(".message-content")?.textContent || "";
     history.push({ role: "assistant", content: assistantText });
-    await loadRecentChats();
   } catch (error) {
-    typing.remove();
+    if (typing.isConnected) {
+      typing.remove();
+    }
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -488,7 +826,9 @@ form.addEventListener("submit", async (event) => {
       const data = await response.json();
       const assistantMessage = appendMessage("assistant", data.answer, {
         sources: data.sources || [],
+        evidence: Array.isArray(data.evidence) ? data.evidence : [],
         usedRag: Boolean(data.used_rag),
+        knowledgeBase: String(data.knowledge_base || ""),
       });
       if (data.error) {
         appendErrorMeta(assistantMessage, data.error);
@@ -496,13 +836,22 @@ form.addEventListener("submit", async (event) => {
       if (data.session_id) {
         currentSessionId = data.session_id;
       }
+      if (data.session) {
+        upsertRecentSession(data.session);
+      }
       history.push({
         role: "assistant",
         content: assistantMessage.querySelector(".message-content")?.textContent || data.answer,
       });
-      await loadRecentChats();
     } catch (fallbackError) {
       appendMessage("assistant", `请求失败：${fallbackError}`);
     }
+  } finally {
+    if (typing.isConnected) {
+      typing.remove();
+    }
+    isSubmitting = false;
+    setComposerBusy(false);
+    setChatPhase("");
   }
 });

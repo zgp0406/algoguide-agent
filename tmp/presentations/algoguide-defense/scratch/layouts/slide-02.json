@@ -1,0 +1,1130 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/ep0da8",
+    "id": "ep0da8",
+    "slide": 2,
+    "layoutId": "4b8978b6-cef9-477a-9ed0-5e5e41cb95b7",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "c1810efd-43e5-49c9-970e-c3185f4d84df",
+    "masterLayoutName": "Master",
+    "backgroundColor": "#F6F1E7",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1920,
+      "height": 1080
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "bg1": "#FFFFFF",
+      "bg2": "#000000",
+      "tx1": "#1F1F1F",
+      "tx2": "#FFFFFF",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "typefaces": [
+      "Consolas",
+      "Microsoft YaHei"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "4b8978b6-cef9-477a-9ed0-5e5e41cb95b7",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "c1810efd-43e5-49c9-970e-c3185f4d84df",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "c1810efd-43e5-49c9-970e-c3185f4d84df",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ixczed8v",
+      "id": "1",
+      "bbox": [
+        96,
+        74,
+        520,
+        26
+      ],
+      "geometry": "rect",
+      "text": "01 / 背景",
+      "textPreview": "01 / 背景",
+      "resolvedFontSize": 15,
+      "resolvedTextStyle": {
+        "fontSize": 15,
+        "typeface": "Consolas",
+        "bold": true,
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "01 / 背景"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "01 / 背景",
+          "runs": [
+            {
+              "index": 1,
+              "text": "01 / 背景",
+              "fontSize": 15,
+              "typeface": "Consolas",
+              "color": "#1A8E72",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/tovahoza",
+      "id": "2",
+      "bbox": [
+        96,
+        108,
+        1280,
+        100
+      ],
+      "geometry": "rect",
+      "text": "算法问答的难点，\n不在“回答”，而在“持续回答得对”",
+      "textPreview": "算法问答的难点， | 不在“回答”，而在“持续回答得对”",
+      "resolvedFontSize": 42,
+      "resolvedTextStyle": {
+        "fontSize": 42,
+        "typeface": "Microsoft YaHei",
+        "bold": true,
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "算法问答的难点，"
+          },
+          {
+            "index": 2,
+            "text": "不在“回答”，而在“持续回答得对”"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "算法问答的难点，",
+          "runs": [
+            {
+              "index": 1,
+              "text": "算法问答的难点，",
+              "fontSize": 42,
+              "typeface": "Microsoft YaHei",
+              "color": "#10211F",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "text": "不在“回答”，而在“持续回答得对”",
+          "runs": [
+            {
+              "index": 1,
+              "text": "不在“回答”，而在“持续回答得对”",
+              "fontSize": 42,
+              "typeface": "Microsoft YaHei",
+              "color": "#10211F",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/032lszqt",
+      "id": "3",
+      "bbox": [
+        96,
+        214,
+        1380,
+        60
+      ],
+      "geometry": "rect",
+      "text": "算法学习不是一次性问答，用户会不断追问、补问和换个角度问，所以系统必须把检索、生成、历史和兜底放在一起。",
+      "textPreview": "算法学习不是一次性问答，用户会不断追问、补问和换个角度问，所以系统必须把检索、生成、历史和兜底放在一起。",
+      "resolvedFontSize": 20,
+      "resolvedTextStyle": {
+        "fontSize": 20,
+        "typeface": "Microsoft YaHei",
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "算法学习不是一次性问答，用户会不断追问、补问和换个角度问，所以系统必须把检索、生成、历史和兜底放在一起。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "算法学习不是一次性问答，用户会不断追问、补问和换个角度问，所以系统必须把检索、生成、历史和兜底放在一起。",
+          "runs": [
+            {
+              "index": 1,
+              "text": "算法学习不是一次性问答，用户会不断追问、补问和换个角度问，所以系统必须把检索、生成、历史和兜底放在一起。",
+              "fontSize": 20,
+              "typeface": "Microsoft YaHei",
+              "color": "#66716C",
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/bulwval8",
+      "id": "4",
+      "bbox": [
+        96,
+        360,
+        300,
+        24
+      ],
+      "geometry": "rect",
+      "text": "三个真实痛点",
+      "textPreview": "三个真实痛点",
+      "resolvedFontSize": 15,
+      "resolvedTextStyle": {
+        "fontSize": 15,
+        "typeface": "Consolas",
+        "bold": true,
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "三个真实痛点"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "三个真实痛点",
+          "runs": [
+            {
+              "index": 1,
+              "text": "三个真实痛点",
+              "fontSize": 15,
+              "typeface": "Consolas",
+              "color": "#1A8E72",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 5,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/i9s36hcr",
+      "id": "5",
+      "bbox": [
+        96,
+        408,
+        780,
+        108
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "#DCD3C6",
+      "lineWidth": 1
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/p0bi9s36",
+      "id": "6",
+      "bbox": [
+        122,
+        436,
+        46,
+        46
+      ],
+      "geometry": "ellipse",
+      "fillColor": "#EAF8F2"
+    },
+    {
+      "order": 7,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/0fepkzup",
+      "id": "7",
+      "bbox": [
+        122,
+        442,
+        46,
+        24
+      ],
+      "geometry": "rect",
+      "text": "1",
+      "textPreview": "1",
+      "resolvedFontSize": 20,
+      "resolvedTextStyle": {
+        "fontSize": 20,
+        "typeface": "Microsoft YaHei",
+        "bold": true,
+        "alignment": "center"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "1"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "1",
+          "runs": [
+            {
+              "index": 1,
+              "text": "1",
+              "fontSize": 20,
+              "typeface": "Microsoft YaHei",
+              "color": "#145D4E",
+              "bold": true,
+              "alignment": "center"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 8,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/byhgn29g",
+      "id": "8",
+      "bbox": [
+        188,
+        430,
+        640,
+        64
+      ],
+      "geometry": "rect",
+      "text": "问题表达常常是口语化的，\n仅靠关键词命中不够准。",
+      "textPreview": "问题表达常常是口语化的， | 仅靠关键词命中不够准。",
+      "resolvedFontSize": 22,
+      "resolvedTextStyle": {
+        "fontSize": 22,
+        "typeface": "Microsoft YaHei",
+        "bold": true,
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "问题表达常常是口语化的，"
+          },
+          {
+            "index": 2,
+            "text": "仅靠关键词命中不够准。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "问题表达常常是口语化的，",
+          "runs": [
+            {
+              "index": 1,
+              "text": "问题表达常常是口语化的，",
+              "fontSize": 22,
+              "typeface": "Microsoft YaHei",
+              "color": "#10211F",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "text": "仅靠关键词命中不够准。",
+          "runs": [
+            {
+              "index": 1,
+              "text": "仅靠关键词命中不够准。",
+              "fontSize": 22,
+              "typeface": "Microsoft YaHei",
+              "color": "#10211F",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 9,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/idonyd0z",
+      "id": "9",
+      "bbox": [
+        96,
+        540,
+        780,
+        108
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "#DCD3C6",
+      "lineWidth": 1
+    },
+    {
+      "order": 10,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/c7u54zid",
+      "id": "10",
+      "bbox": [
+        122,
+        568,
+        46,
+        46
+      ],
+      "geometry": "ellipse",
+      "fillColor": "#F0E7DA"
+    },
+    {
+      "order": 11,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/1orytsvu",
+      "id": "11",
+      "bbox": [
+        122,
+        574,
+        46,
+        24
+      ],
+      "geometry": "rect",
+      "text": "2",
+      "textPreview": "2",
+      "resolvedFontSize": 20,
+      "resolvedTextStyle": {
+        "fontSize": 20,
+        "typeface": "Microsoft YaHei",
+        "bold": true,
+        "alignment": "center"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "2"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "2",
+          "runs": [
+            {
+              "index": 1,
+              "text": "2",
+              "fontSize": 20,
+              "typeface": "Microsoft YaHei",
+              "color": "#145D4E",
+              "bold": true,
+              "alignment": "center"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 12,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/u18jqh0f",
+      "id": "12",
+      "bbox": [
+        188,
+        562,
+        640,
+        64
+      ],
+      "geometry": "rect",
+      "text": "追问时如果丢上下文，\n答案就会开始跑偏。",
+      "textPreview": "追问时如果丢上下文， | 答案就会开始跑偏。",
+      "resolvedFontSize": 22,
+      "resolvedTextStyle": {
+        "fontSize": 22,
+        "typeface": "Microsoft YaHei",
+        "bold": true,
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "追问时如果丢上下文，"
+          },
+          {
+            "index": 2,
+            "text": "答案就会开始跑偏。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "追问时如果丢上下文，",
+          "runs": [
+            {
+              "index": 1,
+              "text": "追问时如果丢上下文，",
+              "fontSize": 22,
+              "typeface": "Microsoft YaHei",
+              "color": "#10211F",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "text": "答案就会开始跑偏。",
+          "runs": [
+            {
+              "index": 1,
+              "text": "答案就会开始跑偏。",
+              "fontSize": 22,
+              "typeface": "Microsoft YaHei",
+              "color": "#10211F",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 13,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/jm1cfa9w",
+      "id": "13",
+      "bbox": [
+        96,
+        672,
+        780,
+        108
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "#DCD3C6",
+      "lineWidth": 1
+    },
+    {
+      "order": 14,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/cfa9w3m9",
+      "id": "14",
+      "bbox": [
+        122,
+        700,
+        46,
+        46
+      ],
+      "geometry": "ellipse",
+      "fillColor": "#FAE8D8"
+    },
+    {
+      "order": 15,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/1032lszq",
+      "id": "15",
+      "bbox": [
+        122,
+        706,
+        46,
+        24
+      ],
+      "geometry": "rect",
+      "text": "3",
+      "textPreview": "3",
+      "resolvedFontSize": 20,
+      "resolvedTextStyle": {
+        "fontSize": 20,
+        "typeface": "Microsoft YaHei",
+        "bold": true,
+        "alignment": "center"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "3"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "3",
+          "runs": [
+            {
+              "index": 1,
+              "text": "3",
+              "fontSize": 20,
+              "typeface": "Microsoft YaHei",
+              "color": "#E09A53",
+              "bold": true,
+              "alignment": "center"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 16,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/u9knih4b",
+      "id": "16",
+      "bbox": [
+        188,
+        694,
+        640,
+        64
+      ],
+      "geometry": "rect",
+      "text": "模型接口不稳定时，\n页面不能直接失效。",
+      "textPreview": "模型接口不稳定时， | 页面不能直接失效。",
+      "resolvedFontSize": 22,
+      "resolvedTextStyle": {
+        "fontSize": 22,
+        "typeface": "Microsoft YaHei",
+        "bold": true,
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "模型接口不稳定时，"
+          },
+          {
+            "index": 2,
+            "text": "页面不能直接失效。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "模型接口不稳定时，",
+          "runs": [
+            {
+              "index": 1,
+              "text": "模型接口不稳定时，",
+              "fontSize": 22,
+              "typeface": "Microsoft YaHei",
+              "color": "#10211F",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "text": "页面不能直接失效。",
+          "runs": [
+            {
+              "index": 1,
+              "text": "页面不能直接失效。",
+              "fontSize": 22,
+              "typeface": "Microsoft YaHei",
+              "color": "#10211F",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 17,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/judg7ads",
+      "id": "17",
+      "bbox": [
+        980,
+        348,
+        844,
+        468
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#11201D",
+      "lineColor": "#2A413B",
+      "lineWidth": 1
+    },
+    {
+      "order": 18,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/cj6tovah",
+      "id": "18",
+      "bbox": [
+        1012,
+        378,
+        220,
+        22
+      ],
+      "geometry": "rect",
+      "text": "项目目标",
+      "textPreview": "项目目标",
+      "resolvedFontSize": 16,
+      "resolvedTextStyle": {
+        "fontSize": 16,
+        "typeface": "Consolas",
+        "bold": true,
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "项目目标"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "项目目标",
+          "runs": [
+            {
+              "index": 1,
+              "text": "项目目标",
+              "fontSize": 16,
+              "typeface": "Consolas",
+              "color": "#A9C7BB",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 19,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/54zidony",
+      "id": "19",
+      "bbox": [
+        1012,
+        418,
+        724,
+        96
+      ],
+      "geometry": "rect",
+      "text": "把“能答”变成“能持续答对”。\n让系统在算法学习场景里同时具备检索准确性、对话连续性和服务稳定性。",
+      "textPreview": "把“能答”变成“能持续答对”。 | 让系统在算法学习场景里同时具备检索准确性、对话连续性和服务稳定性。",
+      "resolvedFontSize": 26,
+      "resolvedTextStyle": {
+        "fontSize": 26,
+        "typeface": "Microsoft YaHei",
+        "bold": true,
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 3,
+        "lines": [
+          {
+            "index": 1,
+            "text": "把“能答”变成“能持续答对”。"
+          },
+          {
+            "index": 2,
+            "text": "让系统在算法学习场景里同时具备检索准确性、对话连续性和"
+          },
+          {
+            "index": 3,
+            "text": "服务稳定性。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "把“能答”变成“能持续答对”。",
+          "runs": [
+            {
+              "index": 1,
+              "text": "把“能答”变成“能持续答对”。",
+              "fontSize": 26,
+              "typeface": "Microsoft YaHei",
+              "color": "#FFFFFF",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "text": "让系统在算法学习场景里同时具备检索准确性、对话连续性和服务稳定性。",
+          "runs": [
+            {
+              "index": 1,
+              "text": "让系统在算法学习场景里同时具备检索准确性、对话连续性和服务稳定性。",
+              "fontSize": 26,
+              "typeface": "Microsoft YaHei",
+              "color": "#FFFFFF",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 20,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/9s36hcrm",
+      "id": "20",
+      "bbox": [
+        1012,
+        544,
+        704,
+        2
+      ],
+      "geometry": "rect",
+      "fillColor": "#2C4A43"
+    },
+    {
+      "order": 21,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/g7adsji5",
+      "id": "21",
+      "bbox": [
+        1012,
+        572,
+        128,
+        44
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#1A8E72",
+      "lineColor": "#1A8E72",
+      "lineWidth": 1
+    },
+    {
+      "order": 22,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/rmhk3q5o",
+      "id": "22",
+      "bbox": [
+        1012,
+        574,
+        128,
+        40
+      ],
+      "geometry": "rect",
+      "text": "检索更准",
+      "textPreview": "检索更准",
+      "resolvedFontSize": 16,
+      "resolvedTextStyle": {
+        "fontSize": 16,
+        "typeface": "Microsoft YaHei",
+        "bold": true,
+        "alignment": "center"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "检索更准"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "检索更准",
+          "runs": [
+            {
+              "index": 1,
+              "text": "检索更准",
+              "fontSize": 16,
+              "typeface": "Microsoft YaHei",
+              "color": "#FFFFFF",
+              "bold": true,
+              "alignment": "center"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 23,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/y1kre1w7",
+      "id": "23",
+      "bbox": [
+        1154,
+        572,
+        128,
+        44
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#E4EFE9",
+      "lineColor": "#C9DDD5",
+      "lineWidth": 1
+    },
+    {
+      "order": 24,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/90je9cvi",
+      "id": "24",
+      "bbox": [
+        1154,
+        574,
+        128,
+        40
+      ],
+      "geometry": "rect",
+      "text": "回答更顺",
+      "textPreview": "回答更顺",
+      "resolvedFontSize": 16,
+      "resolvedTextStyle": {
+        "fontSize": 16,
+        "typeface": "Microsoft YaHei",
+        "bold": true,
+        "alignment": "center"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "回答更顺"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "回答更顺",
+          "runs": [
+            {
+              "index": 1,
+              "text": "回答更顺",
+              "fontSize": 16,
+              "typeface": "Microsoft YaHei",
+              "color": "#10211F",
+              "bold": true,
+              "alignment": "center"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 25,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/gfmlkjm1",
+      "id": "25",
+      "bbox": [
+        1296,
+        572,
+        128,
+        44
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#FAE8D8",
+      "lineColor": "#E7C7A9",
+      "lineWidth": 1
+    },
+    {
+      "order": 26,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/rytsvu9k",
+      "id": "26",
+      "bbox": [
+        1296,
+        574,
+        128,
+        40
+      ],
+      "geometry": "rect",
+      "text": "系统更稳",
+      "textPreview": "系统更稳",
+      "resolvedFontSize": 16,
+      "resolvedTextStyle": {
+        "fontSize": 16,
+        "typeface": "Microsoft YaHei",
+        "bold": true,
+        "alignment": "center"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "系统更稳"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "系统更稳",
+          "runs": [
+            {
+              "index": 1,
+              "text": "系统更稳",
+              "fontSize": 16,
+              "typeface": "Microsoft YaHei",
+              "color": "#E09A53",
+              "bold": true,
+              "alignment": "center"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 27,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/yd0z6103",
+      "id": "27",
+      "bbox": [
+        1012,
+        650,
+        704,
+        96
+      ],
+      "geometry": "rect",
+      "text": "所以我没有只做一个聊天页面，而是把“提问 - 检索 - 生成 - 保存会话”整条链路一起做出来。",
+      "textPreview": "所以我没有只做一个聊天页面，而是把“提问 - 检索 - 生成 - 保存会话”整条链路一起做出来。",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "fontSize": 24,
+        "typeface": "Microsoft YaHei",
+        "bold": true,
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "所以我没有只做一个聊天页面，而是把“提问 - 检索 - 生成 -"
+          },
+          {
+            "index": 2,
+            "text": "保存会话”整条链路一起做出来。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "所以我没有只做一个聊天页面，而是把“提问 - 检索 - 生成 - 保存会话”整条链路一起做出来。",
+          "runs": [
+            {
+              "index": 1,
+              "text": "所以我没有只做一个聊天页面，而是把“提问 - 检索 - 生成 - 保存会话”整条链路一起做出来。",
+              "fontSize": 24,
+              "typeface": "Microsoft YaHei",
+              "color": "#D7E7E0",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "composeRuns": []
+}

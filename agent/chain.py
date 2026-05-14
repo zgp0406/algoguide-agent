@@ -6,12 +6,13 @@ import urllib.error
 import urllib.request
 from collections.abc import Iterator
 from time import monotonic
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
 from agent.env import load_env_file
 from agent.prompt import SYSTEM_PROMPT
-from agent.retriever import retrieve
+from agent.retriever import retrieve_with_scores
 from agent.sessions import append_turn, get_session, list_sessions, upsert_session_message
 
 
@@ -27,9 +28,12 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     sources: list[str] = Field(default_factory=list)
+    evidence: list[dict[str, object]] = Field(default_factory=list)
     used_rag: bool = False
+    knowledge_base: str | None = None
     error: str | None = None
     session_id: str | None = None
+    session: dict[str, object] | None = None
 
 
 class ApiStatusResponse(BaseModel):
@@ -43,6 +47,8 @@ class ApiStatusResponse(BaseModel):
 _API_STATUS_CACHE: tuple[float, ApiStatusResponse] | None = None
 _API_STATUS_TTL_SECONDS = 60.0
 _API_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "60"))
+_MAX_RECENT_HISTORY_MESSAGES = 8
+_DEFAULT_KNOWLEDGE_BASE_NAME = "本地算法知识库"
 
 
 def _api_config() -> tuple[str, str, str]:
@@ -61,6 +67,164 @@ def _proxyless_opener() -> urllib.request.OpenerDirector:
 def _chunk_text(text: str, size: int = 20) -> Iterator[str]:
     for index in range(0, len(text), size):
         yield text[index : index + size]
+
+
+# 把异常统一转成简单可读的字符串，方便前端和日志显示。
+def _error_text(exc: Exception) -> str:
+    return f"{exc.__class__.__name__}: {exc}"
+
+
+def _save_user_message(
+    session_id: str | None,
+    *,
+    content: str,
+    title_hint: str | None = None,
+) -> tuple[str, str | None]:
+    resolved_session_id = session_id or uuid4().hex
+    try:
+        session = upsert_session_message(
+            session_id,
+            role="user",
+            content=content,
+            title_hint=title_hint,
+        )
+        return session["id"], None
+    except Exception as exc:
+        return resolved_session_id, _error_text(exc)
+
+
+def _save_answer_message(
+    session_id: str | None,
+    *,
+    content: str,
+    sources: list[str],
+    evidence: list[dict[str, object]],
+    used_rag: bool,
+) -> tuple[str, str | None]:
+    resolved_session_id = session_id or uuid4().hex
+    try:
+        session = upsert_session_message(
+            session_id,
+            role="assistant",
+            content=content,
+            sources=sources,
+            evidence=evidence,
+            used_rag=used_rag,
+        )
+        return session["id"], None
+    except Exception as exc:
+        return resolved_session_id, _error_text(exc)
+
+
+def _save_turn(
+    session_id: str | None,
+    *,
+    user_message: str,
+    assistant_message: str,
+    assistant_sources: list[str] | None = None,
+    assistant_evidence: list[dict[str, object]] | None = None,
+    assistant_used_rag: bool | None = None,
+) -> tuple[str, str | None]:
+    resolved_session_id = session_id or uuid4().hex
+    try:
+        session = append_turn(
+            session_id,
+            user_message=user_message,
+            assistant_message=assistant_message,
+            assistant_sources=assistant_sources,
+            assistant_evidence=assistant_evidence,
+            assistant_used_rag=assistant_used_rag,
+        )
+        return session["id"], None
+    except Exception as exc:
+        return resolved_session_id, _error_text(exc)
+
+
+# 只返回会话列表需要的摘要字段，避免把整段消息历史都塞给前端列表。
+def _session_summary(session: dict[str, object]) -> dict[str, object]:
+    messages = session.get("messages")
+    message_count = len(messages) if isinstance(messages, list) else 0
+    return {
+        "id": session.get("id"),
+        "title": session.get("title"),
+        "updated_at": session.get("updated_at"),
+        "summary": session.get("summary") or "",
+        "message_count": message_count,
+    }
+
+
+def _knowledge_base_name() -> str:
+    return _DEFAULT_KNOWLEDGE_BASE_NAME
+
+
+def _compact_history(history: list[dict[str, str]]) -> list[dict[str, str]]:
+    cleaned: list[dict[str, str]] = []
+    for item in history:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or "").strip()
+        content = str(item.get("content") or "").strip()
+        if role not in {"user", "assistant", "system"} or not content:
+            continue
+        cleaned.append({"role": role, "content": content})
+    if len(cleaned) <= _MAX_RECENT_HISTORY_MESSAGES:
+        return cleaned
+    return cleaned[-_MAX_RECENT_HISTORY_MESSAGES:]
+
+
+def _unique_strings(items: list[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        value = str(item).strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def _excerpt_text(text: str, limit: int = 160) -> str:
+    normalized = " ".join(str(text or "").strip().split())
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[: limit - 1]}…"
+
+
+def _format_evidence_items(chunks: list[object]) -> list[dict[str, object]]:
+    evidence: list[dict[str, object]] = []
+    for chunk in chunks:
+        source = str(getattr(chunk, "source", "") or "").strip()
+        text = str(getattr(chunk, "text", "") or "").strip()
+        score = getattr(chunk, "score", None)
+        if not source or not text:
+            continue
+        item: dict[str, object] = {
+            "source": source,
+            "excerpt": _excerpt_text(text),
+        }
+        if score is not None:
+            try:
+                item["score"] = float(score)
+            except Exception:
+                pass
+        evidence.append(item)
+    return evidence
+
+
+def _build_model_messages(
+    *,
+    prompt: str,
+    history: list[dict[str, str]],
+    session_summary: str = "",
+) -> list[dict[str, str]]:
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    summary_text = str(session_summary or "").strip()
+    if summary_text:
+        messages.append({"role": "system", "content": f"会话摘要：{summary_text}"})
+    messages.extend(_compact_history(history))
+    messages.append({"role": "user", "content": prompt})
+    return messages
 
 
 def _request_chat_completion(
@@ -228,167 +392,276 @@ def get_api_status(force_refresh: bool = False) -> ApiStatusResponse:
     return result
 
 
-def build_context(message: str) -> tuple[str, list[str], bool]:
-    chunks = retrieve(message)
+def build_context(message: str) -> tuple[str, list[str], list[dict[str, object]], bool, str]:
+    chunks = retrieve_with_scores(message)
     if not chunks:
-        return message, [], False
+        return message, [], [], False, _knowledge_base_name()
 
     context_lines = []
     sources = []
-    for chunk in chunks:
-        context_lines.append(f"[{chunk.source}] {chunk.text}")
+    for index, chunk in enumerate(chunks, start=1):
+        context_lines.append(
+            f"{index}. 来源：{chunk.source}\n"
+            f"   片段：{chunk.text}"
+        )
         sources.append(chunk.source)
 
     context = "\n\n".join(context_lines)
     prompt = (
-        f"Relevant knowledge:\n{context}\n\n"
+        "Relevant knowledge with citations:\n"
+        f"{context}\n\n"
         f"User question: {message}\n"
+        "请优先基于以上证据回答，并在答案里自然提及关键来源。"
     )
-    return prompt, sources, True
+    return prompt, _unique_strings(sources), _format_evidence_items(chunks), True, _knowledge_base_name()
 
 
-def local_answer(message: str, sources: list[str], used_rag: bool) -> str:
+def local_answer(
+    message: str,
+    sources: list[str],
+    used_rag: bool,
+    evidence: list[dict[str, object]] | None = None,
+) -> str:
     intro = "我先基于知识库给你一个结构化回答。"
     if not used_rag:
         intro = "当前还没有命中本地知识库，我先给你一个基础回答。"
     source_text = f"参考来源：{', '.join(sorted(set(sources)))}。" if sources else ""
+    evidence_lines = []
+    for item in evidence or []:
+        source = str(item.get("source") or "").strip()
+        excerpt = str(item.get("excerpt") or "").strip()
+        if not source and not excerpt:
+            continue
+        if source and excerpt:
+            evidence_lines.append(f"- {source}：{excerpt}")
+        elif source:
+            evidence_lines.append(f"- {source}")
+        else:
+            evidence_lines.append(f"- {excerpt}")
+    evidence_text = ""
+    if evidence_lines:
+        evidence_text = "\n\n参考片段：\n" + "\n".join(evidence_lines)
     return (
         f"{intro}\n\n"
         f"你的问题是：{message}\n\n"
         f"建议你把这个项目拆成三层：后端接口、检索模块、前端页面。\n"
         f"后端负责接收问题并组织回答，检索模块负责从笔记里找相关内容，前端负责展示结果。\n"
         f"{source_text}"
+        f"{evidence_text}"
     ).strip()
 
 
+def _build_meta_payload(
+    *,
+    sources: list[str],
+    evidence: list[dict[str, object]],
+    used_rag: bool,
+    knowledge_base: str,
+    ready: bool,
+    session_id: str,
+    error: str | None = None,
+    session: dict[str, object] | None = None,
+) -> dict[str, object]:
+    return {
+        "sources": sources,
+        "evidence": evidence,
+        "used_rag": used_rag,
+        "knowledge_base": knowledge_base,
+        "ready": ready,
+        "session_id": session_id,
+        "error": error,
+        "session": session,
+    }
+
+
 def chat(request: ChatRequest) -> ChatResponse:
-    prompt, sources, used_rag = build_context(request.message)
+    prompt, sources, evidence, used_rag, knowledge_base = build_context(request.message)
     session_id = request.session_id
+    existing_session = get_session(session_id) if session_id else None
+    session_summary = str(existing_session.get("summary") or "") if existing_session else ""
 
     api_key, _, _ = _api_config()
     if api_key:
         try:
             answer, _ = _request_chat_completion(
-                [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    *request.history,
-                    {"role": "user", "content": prompt},
-                ],
+                _build_model_messages(prompt=prompt, history=request.history, session_summary=session_summary),
                 temperature=0.2,
             )
-            session = append_turn(
+            saved_session_id, storage_error = _save_turn(
                 session_id,
                 user_message=request.message,
                 assistant_message=answer,
                 assistant_sources=sources,
+                assistant_evidence=evidence,
                 assistant_used_rag=used_rag,
             )
-            return ChatResponse(answer=answer, sources=sources, used_rag=used_rag, session_id=session["id"])
+            session = get_session(saved_session_id)
+            error = None
+            if storage_error:
+                error = f"StorageError: {storage_error}"
+            return ChatResponse(
+                answer=answer,
+                sources=sources,
+                evidence=evidence,
+                used_rag=used_rag,
+                knowledge_base=knowledge_base,
+                error=error,
+                session_id=saved_session_id,
+                session=_session_summary(session) if session else None,
+            )
         except Exception as exc:
-            fallback_answer = local_answer(request.message, sources, used_rag)
-            session = append_turn(
+            fallback_answer = local_answer(request.message, sources, used_rag, evidence)
+            saved_session_id, storage_error = _save_turn(
                 session_id,
                 user_message=request.message,
                 assistant_message=fallback_answer,
                 assistant_sources=sources,
+                assistant_evidence=evidence,
                 assistant_used_rag=used_rag,
             )
+            session = get_session(saved_session_id)
+            error = f"{exc.__class__.__name__}: {exc}"
+            if storage_error:
+                error = f"{error}; StorageError: {storage_error}"
             # Fall back to the local response so the demo still works offline.
             # The API path is preferred, but the app remains usable if config is incomplete.
             return ChatResponse(
                 answer=fallback_answer,
                 sources=sources,
+                evidence=evidence,
                 used_rag=used_rag,
-                error=f"{exc.__class__.__name__}: {exc}",
-                session_id=session["id"],
+                knowledge_base=knowledge_base,
+                error=error,
+                session_id=saved_session_id,
+                session=_session_summary(session) if session else None,
             )
 
-    fallback_answer = local_answer(request.message, sources, used_rag)
-    session = append_turn(
+    fallback_answer = local_answer(request.message, sources, used_rag, evidence)
+    saved_session_id, storage_error = _save_turn(
         session_id,
         user_message=request.message,
         assistant_message=fallback_answer,
         assistant_sources=sources,
+        assistant_evidence=evidence,
         assistant_used_rag=used_rag,
     )
+    session = get_session(saved_session_id)
+    error = "Missing OPENAI_API_KEY"
+    if storage_error:
+        error = f"{error}; StorageError: {storage_error}"
     return ChatResponse(
         answer=fallback_answer,
         sources=sources,
+        evidence=evidence,
         used_rag=used_rag,
-        error="Missing OPENAI_API_KEY",
-        session_id=session["id"],
+        knowledge_base=knowledge_base,
+        error=error,
+        session_id=saved_session_id,
+        session=_session_summary(session) if session else None,
     )
 
 
 def stream_chat(request: ChatRequest) -> Iterator[bytes]:
-    prompt, sources, used_rag = build_context(request.message)
-    session = upsert_session_message(
+    prompt, sources, evidence, used_rag, knowledge_base = build_context(request.message)
+    existing_session = get_session(request.session_id) if request.session_id else None
+    session_summary = str(existing_session.get("summary") or "") if existing_session else ""
+    session_id, storage_error = _save_user_message(
         request.session_id,
-        role="user",
         content=request.message,
         title_hint=request.message,
     )
-    session_id = session["id"]
 
     api_key, _, _ = _api_config()
     if not api_key:
-        answer = local_answer(request.message, sources, used_rag)
+        answer = local_answer(request.message, sources, used_rag, evidence)
+        meta_error = storage_error
         yield _sse_event(
             "meta",
-            {"sources": sources, "used_rag": used_rag, "ready": False, "session_id": session_id},
+            _build_meta_payload(
+                sources=sources,
+                evidence=evidence,
+                used_rag=used_rag,
+                knowledge_base=knowledge_base,
+                ready=False,
+                session_id=session_id,
+                error=meta_error,
+            ),
         )
         for chunk in _chunk_text(answer):
             yield _sse_event("delta", {"text": chunk})
-        upsert_session_message(
+        saved_session_id, answer_storage_error = _save_answer_message(
             session_id,
-            role="assistant",
             content=answer,
             sources=sources,
+            evidence=evidence,
             used_rag=used_rag,
         )
+        session = get_session(saved_session_id)
+        if answer_storage_error:
+            meta_error = answer_storage_error if not meta_error else f"{meta_error}; {answer_storage_error}"
         yield _sse_event(
             "done",
             {
                 "answer": answer,
-                "sources": sources,
-                "used_rag": used_rag,
-                "ready": False,
-                "session_id": session_id,
+                **_build_meta_payload(
+                    sources=sources,
+                    evidence=evidence,
+                    used_rag=used_rag,
+                    knowledge_base=knowledge_base,
+                    ready=False,
+                    session_id=saved_session_id,
+                    error=meta_error,
+                    session=_session_summary(session) if session else None,
+                ),
             },
         )
         return
 
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        *request.history,
-        {"role": "user", "content": prompt},
-    ]
+    messages = _build_model_messages(prompt=prompt, history=request.history, session_summary=session_summary)
 
     try:
+        meta_error = storage_error
         yield _sse_event(
             "meta",
-            {"sources": sources, "used_rag": used_rag, "ready": True, "session_id": session_id},
+            _build_meta_payload(
+                sources=sources,
+                evidence=evidence,
+                used_rag=used_rag,
+                knowledge_base=knowledge_base,
+                ready=True,
+                session_id=session_id,
+                error=meta_error,
+            ),
         )
         answer_parts: list[str] = []
         for chunk in _request_chat_completion_stream(messages, temperature=0.2):
             answer_parts.append(chunk)
             yield _sse_event("delta", {"text": chunk})
         answer = "".join(answer_parts)
-        upsert_session_message(
+        saved_session_id, answer_storage_error = _save_answer_message(
             session_id,
-            role="assistant",
             content=answer,
             sources=sources,
+            evidence=evidence,
             used_rag=used_rag,
         )
+        session = get_session(saved_session_id)
+        if answer_storage_error:
+            meta_error = answer_storage_error if not meta_error else f"{meta_error}; {answer_storage_error}"
         yield _sse_event(
             "done",
             {
                 "answer": answer,
-                "sources": sources,
-                "used_rag": used_rag,
-                "ready": True,
-                "session_id": session_id,
+                **_build_meta_payload(
+                    sources=sources,
+                    evidence=evidence,
+                    used_rag=used_rag,
+                    knowledge_base=knowledge_base,
+                    ready=True,
+                    session_id=saved_session_id,
+                    error=meta_error,
+                    session=_session_summary(session) if session else None,
+                ),
             },
         )
     except Exception as exc:
@@ -396,23 +669,32 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
         try:
             answer, _ = _request_chat_completion(messages, temperature=0.2)
         except Exception:
-            answer = local_answer(request.message, sources, used_rag)
-        upsert_session_message(
+            answer = local_answer(request.message, sources, used_rag, evidence)
+        saved_session_id, answer_storage_error = _save_answer_message(
             session_id,
-            role="assistant",
             content=answer,
             sources=sources,
+            evidence=evidence,
             used_rag=used_rag,
         )
+        session = get_session(saved_session_id)
+        error_text = _error_text(exc)
+        if storage_error:
+            error_text = f"{error_text}; StorageError: {storage_error}"
+        if answer_storage_error:
+            error_text = f"{error_text}; StorageError: {answer_storage_error}"
         yield _sse_event(
             "meta",
-            {
-                "sources": sources,
-                "used_rag": used_rag,
-                "ready": False,
-                "error": f"{exc.__class__.__name__}: {exc}",
-                "session_id": session_id,
-            },
+            _build_meta_payload(
+                sources=sources,
+                evidence=evidence,
+                used_rag=used_rag,
+                knowledge_base=knowledge_base,
+                ready=False,
+                session_id=saved_session_id,
+                error=error_text,
+                session=_session_summary(session) if session else None,
+            ),
         )
         for chunk in _chunk_text(answer):
             yield _sse_event("delta", {"text": chunk})
@@ -420,9 +702,15 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
             "done",
             {
                 "answer": answer,
-                "sources": sources,
-                "used_rag": used_rag,
-                "ready": False,
-                "session_id": session_id,
+                **_build_meta_payload(
+                    sources=sources,
+                    evidence=evidence,
+                    used_rag=used_rag,
+                    knowledge_base=knowledge_base,
+                    ready=False,
+                    session_id=saved_session_id,
+                    error=error_text,
+                    session=_session_summary(session) if session else None,
+                ),
             },
         )

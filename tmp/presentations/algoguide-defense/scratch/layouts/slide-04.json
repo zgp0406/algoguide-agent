@@ -1,0 +1,857 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/0lbu7c",
+    "id": "0lbu7c",
+    "slide": 4,
+    "layoutId": "4b8978b6-cef9-477a-9ed0-5e5e41cb95b7",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "c1810efd-43e5-49c9-970e-c3185f4d84df",
+    "masterLayoutName": "Master",
+    "backgroundColor": "#F6F1E7",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1920,
+      "height": 1080
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "bg1": "#FFFFFF",
+      "bg2": "#000000",
+      "tx1": "#1F1F1F",
+      "tx2": "#FFFFFF",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "typefaces": [
+      "Consolas",
+      "Microsoft YaHei"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "4b8978b6-cef9-477a-9ed0-5e5e41cb95b7",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "c1810efd-43e5-49c9-970e-c3185f4d84df",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "c1810efd-43e5-49c9-970e-c3185f4d84df",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/jqh0fepk",
+      "id": "1",
+      "bbox": [
+        96,
+        74,
+        520,
+        26
+      ],
+      "geometry": "rect",
+      "text": "03 / 功能",
+      "textPreview": "03 / 功能",
+      "resolvedFontSize": 15,
+      "resolvedTextStyle": {
+        "fontSize": 15,
+        "typeface": "Consolas",
+        "bold": true,
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "03 / 功能"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "03 / 功能",
+          "runs": [
+            {
+              "index": 1,
+              "text": "03 / 功能",
+              "fontSize": 15,
+              "typeface": "Consolas",
+              "color": "#1A8E72",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/8bat47y1",
+      "id": "2",
+      "bbox": [
+        96,
+        108,
+        1280,
+        100
+      ],
+      "geometry": "rect",
+      "text": "功能设计围绕学习体验来拼，\n而不是围绕页面模块来堆",
+      "textPreview": "功能设计围绕学习体验来拼， | 而不是围绕页面模块来堆",
+      "resolvedFontSize": 42,
+      "resolvedTextStyle": {
+        "fontSize": 42,
+        "typeface": "Microsoft YaHei",
+        "bold": true,
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "功能设计围绕学习体验来拼，"
+          },
+          {
+            "index": 2,
+            "text": "而不是围绕页面模块来堆"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "功能设计围绕学习体验来拼，",
+          "runs": [
+            {
+              "index": 1,
+              "text": "功能设计围绕学习体验来拼，",
+              "fontSize": 42,
+              "typeface": "Microsoft YaHei",
+              "color": "#10211F",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "text": "而不是围绕页面模块来堆",
+          "runs": [
+            {
+              "index": 1,
+              "text": "而不是围绕页面模块来堆",
+              "fontSize": 42,
+              "typeface": "Microsoft YaHei",
+              "color": "#10211F",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/1w7mp0bi",
+      "id": "3",
+      "bbox": [
+        96,
+        214,
+        1380,
+        60
+      ],
+      "geometry": "rect",
+      "text": "每个功能都服务于同一个目标：让算法学习这件事更像一个连续的对话过程。",
+      "textPreview": "每个功能都服务于同一个目标：让算法学习这件事更像一个连续的对话过程。",
+      "resolvedFontSize": 20,
+      "resolvedTextStyle": {
+        "fontSize": 20,
+        "typeface": "Microsoft YaHei",
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "每个功能都服务于同一个目标：让算法学习这件事更像一个连续的对话过程。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "每个功能都服务于同一个目标：让算法学习这件事更像一个连续的对话过程。",
+          "runs": [
+            {
+              "index": 1,
+              "text": "每个功能都服务于同一个目标：让算法学习这件事更像一个连续的对话过程。",
+              "fontSize": 20,
+              "typeface": "Microsoft YaHei",
+              "color": "#66716C",
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/qh0fepkz",
+      "id": "4",
+      "bbox": [
+        96,
+        352,
+        780,
+        158
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "#DCD3C6",
+      "lineWidth": 1
+    },
+    {
+      "order": 5,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/j2t83itg",
+      "id": "5",
+      "bbox": [
+        118,
+        376,
+        10,
+        44
+      ],
+      "geometry": "rect",
+      "fillColor": "#1A8E72"
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/8nqxs72x",
+      "id": "6",
+      "bbox": [
+        142,
+        372,
+        680,
+        30
+      ],
+      "geometry": "rect",
+      "text": "支持快捷问题填充",
+      "textPreview": "支持快捷问题填充",
+      "resolvedFontSize": 23,
+      "resolvedTextStyle": {
+        "fontSize": 23,
+        "typeface": "Microsoft YaHei",
+        "bold": true,
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "支持快捷问题填充"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "支持快捷问题填充",
+          "runs": [
+            {
+              "index": 1,
+              "text": "支持快捷问题填充",
+              "fontSize": 23,
+              "typeface": "Microsoft YaHei",
+              "color": "#10211F",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 7,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/18jqh0fe",
+      "id": "7",
+      "bbox": [
+        142,
+        410,
+        680,
+        58
+      ],
+      "geometry": "rect",
+      "text": "侧边栏直接放入 C++ 例题、简化解释、继续追问等入口。",
+      "textPreview": "侧边栏直接放入 C++ 例题、简化解释、继续追问等入口。",
+      "resolvedFontSize": 18,
+      "resolvedTextStyle": {
+        "fontSize": 18,
+        "typeface": "Microsoft YaHei",
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "侧边栏直接放入 C++ 例题、简化解释、继续追问等入口。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "侧边栏直接放入 C++ 例题、简化解释、继续追问等入口。",
+          "runs": [
+            {
+              "index": 1,
+              "text": "侧边栏直接放入 C++ 例题、简化解释、继续追问等入口。",
+              "fontSize": 18,
+              "typeface": "Microsoft YaHei",
+              "color": "#66716C",
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 8,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ulwval87",
+      "id": "8",
+      "bbox": [
+        1044,
+        352,
+        780,
+        158
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "#DCD3C6",
+      "lineWidth": 1
+    },
+    {
+      "order": 9,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/j6tovaho",
+      "id": "9",
+      "bbox": [
+        1066,
+        376,
+        10,
+        44
+      ],
+      "geometry": "rect",
+      "fillColor": "#E09A53"
+    },
+    {
+      "order": 10,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/j2t83itg",
+      "id": "10",
+      "bbox": [
+        1090,
+        372,
+        680,
+        30
+      ],
+      "geometry": "rect",
+      "text": "支持流式输出",
+      "textPreview": "支持流式输出",
+      "resolvedFontSize": 23,
+      "resolvedTextStyle": {
+        "fontSize": 23,
+        "typeface": "Microsoft YaHei",
+        "bold": true,
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "支持流式输出"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "支持流式输出",
+          "runs": [
+            {
+              "index": 1,
+              "text": "支持流式输出",
+              "fontSize": 23,
+              "typeface": "Microsoft YaHei",
+              "color": "#10211F",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 11,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/qh0fepkz",
+      "id": "11",
+      "bbox": [
+        1090,
+        410,
+        680,
+        58
+      ],
+      "geometry": "rect",
+      "text": "回答可以边生成边展示，交互体验更像真实聊天。",
+      "textPreview": "回答可以边生成边展示，交互体验更像真实聊天。",
+      "resolvedFontSize": 18,
+      "resolvedTextStyle": {
+        "fontSize": 18,
+        "typeface": "Microsoft YaHei",
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "回答可以边生成边展示，交互体验更像真实聊天。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "回答可以边生成边展示，交互体验更像真实聊天。",
+          "runs": [
+            {
+              "index": 1,
+              "text": "回答可以边生成边展示，交互体验更像真实聊天。",
+              "fontSize": 18,
+              "typeface": "Microsoft YaHei",
+              "color": "#66716C",
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 12,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/18jqh0fe",
+      "id": "12",
+      "bbox": [
+        96,
+        548,
+        780,
+        158
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "#DCD3C6",
+      "lineWidth": 1
+    },
+    {
+      "order": 13,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/8nqxs72x",
+      "id": "13",
+      "bbox": [
+        118,
+        572,
+        10,
+        44
+      ],
+      "geometry": "rect",
+      "fillColor": "#3F7B6B"
+    },
+    {
+      "order": 14,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/jqh0fepk",
+      "id": "14",
+      "bbox": [
+        142,
+        568,
+        680,
+        30
+      ],
+      "geometry": "rect",
+      "text": "支持本地会话保存",
+      "textPreview": "支持本地会话保存",
+      "resolvedFontSize": 23,
+      "resolvedTextStyle": {
+        "fontSize": 23,
+        "typeface": "Microsoft YaHei",
+        "bold": true,
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "支持本地会话保存"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "支持本地会话保存",
+          "runs": [
+            {
+              "index": 1,
+              "text": "支持本地会话保存",
+              "fontSize": 23,
+              "typeface": "Microsoft YaHei",
+              "color": "#10211F",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 15,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/q5o7qpg3",
+      "id": "15",
+      "bbox": [
+        142,
+        606,
+        680,
+        58
+      ],
+      "geometry": "rect",
+      "text": "刷新后还能看见历史会话，侧栏会显示最近记录和摘要。",
+      "textPreview": "刷新后还能看见历史会话，侧栏会显示最近记录和摘要。",
+      "resolvedFontSize": 18,
+      "resolvedTextStyle": {
+        "fontSize": 18,
+        "typeface": "Microsoft YaHei",
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "刷新后还能看见历史会话，侧栏会显示最近记录和摘要。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "刷新后还能看见历史会话，侧栏会显示最近记录和摘要。",
+          "runs": [
+            {
+              "index": 1,
+              "text": "刷新后还能看见历史会话，侧栏会显示最近记录和摘要。",
+              "fontSize": 18,
+              "typeface": "Microsoft YaHei",
+              "color": "#66716C",
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 16,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/1w7mp0bi",
+      "id": "16",
+      "bbox": [
+        1044,
+        548,
+        780,
+        158
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "#DCD3C6",
+      "lineWidth": 1
+    },
+    {
+      "order": 17,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/8bat47y1",
+      "id": "17",
+      "bbox": [
+        1066,
+        572,
+        10,
+        44
+      ],
+      "geometry": "rect",
+      "fillColor": "#5A6D64"
+    },
+    {
+      "order": 18,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ji5snelo",
+      "id": "18",
+      "bbox": [
+        1090,
+        568,
+        680,
+        30
+      ],
+      "geometry": "rect",
+      "text": "支持本地知识检索 + 兜底",
+      "textPreview": "支持本地知识检索 + 兜底",
+      "resolvedFontSize": 23,
+      "resolvedTextStyle": {
+        "fontSize": 23,
+        "typeface": "Microsoft YaHei",
+        "bold": true,
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "支持本地知识检索 + 兜底"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "支持本地知识检索 + 兜底",
+          "runs": [
+            {
+              "index": 1,
+              "text": "支持本地知识检索 + 兜底",
+              "fontSize": 23,
+              "typeface": "Microsoft YaHei",
+              "color": "#10211F",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 19,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/uxc3ylc7",
+      "id": "19",
+      "bbox": [
+        1090,
+        606,
+        680,
+        58
+      ],
+      "geometry": "rect",
+      "text": "先切块做语义检索；如果模型不可用，仍能给出可用答案。",
+      "textPreview": "先切块做语义检索；如果模型不可用，仍能给出可用答案。",
+      "resolvedFontSize": 18,
+      "resolvedTextStyle": {
+        "fontSize": 18,
+        "typeface": "Microsoft YaHei",
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "先切块做语义检索；如果模型不可用，仍能给出可用答案。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "先切块做语义检索；如果模型不可用，仍能给出可用答案。",
+          "runs": [
+            {
+              "index": 1,
+              "text": "先切块做语义检索；如果模型不可用，仍能给出可用答案。",
+              "fontSize": 18,
+              "typeface": "Microsoft YaHei",
+              "color": "#66716C",
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 20,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/2t83itgf",
+      "id": "20",
+      "bbox": [
+        96,
+        764,
+        1728,
+        166
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#11221F",
+      "lineColor": "#29423B",
+      "lineWidth": 1
+    },
+    {
+      "order": 21,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/re1w7mp0",
+      "id": "21",
+      "bbox": [
+        124,
+        792,
+        220,
+        20
+      ],
+      "geometry": "rect",
+      "text": "最终效果",
+      "textPreview": "最终效果",
+      "resolvedFontSize": 15,
+      "resolvedTextStyle": {
+        "fontSize": 15,
+        "typeface": "Consolas",
+        "bold": true,
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "最终效果"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "最终效果",
+          "runs": [
+            {
+              "index": 1,
+              "text": "最终效果",
+              "fontSize": 15,
+              "typeface": "Consolas",
+              "color": "#9CCAB9",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 22,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/kzupwb2h",
+      "id": "22",
+      "bbox": [
+        124,
+        828,
+        1500,
+        72
+      ],
+      "geometry": "rect",
+      "text": "不是一个孤立的聊天框，而是一个能“问 - 查 - 答 - 存 - 续问”的算法学习工作台。",
+      "textPreview": "不是一个孤立的聊天框，而是一个能“问 - 查 - 答 - 存 - 续问”的算法学习工作台。",
+      "resolvedFontSize": 28,
+      "resolvedTextStyle": {
+        "fontSize": 28,
+        "typeface": "Microsoft YaHei",
+        "bold": true,
+        "alignment": "left"
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "不是一个孤立的聊天框，而是一个能“问 - 查 - 答 - 存 - 续问”的算法学习工作台。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "不是一个孤立的聊天框，而是一个能“问 - 查 - 答 - 存 - 续问”的算法学习工作台。",
+          "runs": [
+            {
+              "index": 1,
+              "text": "不是一个孤立的聊天框，而是一个能“问 - 查 - 答 - 存 - 续问”的算法学习工作台。",
+              "fontSize": 28,
+              "typeface": "Microsoft YaHei",
+              "color": "#FFFFFF",
+              "bold": true,
+              "alignment": "left"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "composeRuns": []
+}

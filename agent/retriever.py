@@ -24,6 +24,13 @@ class KnowledgeChunk:
 
 
 @dataclass
+class RetrievedChunk:
+    source: str
+    text: str
+    score: float
+
+
+@dataclass
 class KnowledgeStore:
     chunks: list[KnowledgeChunk]
     model_name: str
@@ -106,7 +113,21 @@ def _score_linear(query_text: str, chunk_text: str) -> float:
     return float(len(query_tokens & chunk_tokens))
 
 
-def retrieve(query: str, k: int = 3) -> list[KnowledgeChunk]:
+def _unique_chunks(chunks: list[RetrievedChunk], k: int) -> list[RetrievedChunk]:
+    result: list[RetrievedChunk] = []
+    seen: set[tuple[str, str]] = set()
+    for chunk in chunks:
+        key = (chunk.source, chunk.text)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(chunk)
+        if len(result) >= k:
+            break
+    return result
+
+
+def retrieve_with_scores(query: str, k: int = 3) -> list[RetrievedChunk]:
     store = _get_store()
     if not store.chunks:
         return []
@@ -117,22 +138,39 @@ def retrieve(query: str, k: int = 3) -> list[KnowledgeChunk]:
 
             query_vector = embed_text(query, model_name=store.model_name)
             query_array = np.asarray([query_vector], dtype="float32")
-            _, indices = store.faiss_index.search(query_array, k)
-            result: list[KnowledgeChunk] = []
-            for index in indices[0]:
+            scores, indices = store.faiss_index.search(query_array, k)
+            result: list[RetrievedChunk] = []
+            for index, score in zip(indices[0], scores[0], strict=False):
                 if index < 0 or index >= len(store.chunks):
                     continue
-                result.append(store.chunks[int(index)])
-            return result
+                chunk = store.chunks[int(index)]
+                result.append(
+                    RetrievedChunk(
+                        source=chunk.source,
+                        text=chunk.text,
+                        score=float(score),
+                    )
+                )
+            return _unique_chunks(result, k)
         except Exception:
             # If the embedding model cannot be loaded, fall back to a simple lexical score.
             pass
 
-    scored: list[tuple[float, KnowledgeChunk]] = []
+    scored: list[RetrievedChunk] = []
     for chunk in store.chunks:
         score = _score_linear(query, chunk.text)
         if score > 0:
-            scored.append((score, chunk))
+            scored.append(
+                RetrievedChunk(
+                    source=chunk.source,
+                    text=chunk.text,
+                    score=float(score),
+                )
+            )
 
-    scored.sort(key=lambda item: item[0], reverse=True)
-    return [chunk for _, chunk in scored[:k]]
+    scored.sort(key=lambda item: item.score, reverse=True)
+    return _unique_chunks(scored, k)
+
+
+def retrieve(query: str, k: int = 3) -> list[KnowledgeChunk]:
+    return [KnowledgeChunk(source=chunk.source, text=chunk.text) for chunk in retrieve_with_scores(query, k=k)]
