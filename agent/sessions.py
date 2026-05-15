@@ -13,6 +13,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 SESSIONS_JSON_PATH = DATA_DIR / "sessions.json"
 SESSIONS_DB_PATH = DATA_DIR / "sessions_store.sqlite3"
+SESSIONS_LEGACY_MIGRATED_PATH = DATA_DIR / "sessions_legacy_imported.flag"
 
 _LOCK = RLock()
 _INITIALIZED = False
@@ -233,7 +234,18 @@ def _normalize_session(session: sqlite3.Row, messages: list[dict[str, Any]]) -> 
 
 
 def _import_legacy_json(conn: sqlite3.Connection) -> None:
+    if SESSIONS_LEGACY_MIGRATED_PATH.exists():
+        return
+
+    existing_sessions = conn.execute("SELECT 1 FROM sessions LIMIT 1").fetchone()
+    if existing_sessions:
+        SESSIONS_LEGACY_MIGRATED_PATH.parent.mkdir(parents=True, exist_ok=True)
+        SESSIONS_LEGACY_MIGRATED_PATH.write_text(_now(), encoding="utf-8")
+        return
+
     if not SESSIONS_JSON_PATH.exists():
+        SESSIONS_LEGACY_MIGRATED_PATH.parent.mkdir(parents=True, exist_ok=True)
+        SESSIONS_LEGACY_MIGRATED_PATH.write_text(_now(), encoding="utf-8")
         return
 
     try:
@@ -243,6 +255,8 @@ def _import_legacy_json(conn: sqlite3.Connection) -> None:
 
     sessions = payload.get("sessions") if isinstance(payload, dict) else None
     if not isinstance(sessions, list):
+        SESSIONS_LEGACY_MIGRATED_PATH.parent.mkdir(parents=True, exist_ok=True)
+        SESSIONS_LEGACY_MIGRATED_PATH.write_text(_now(), encoding="utf-8")
         return
 
     inserted = 0
@@ -307,6 +321,43 @@ def _import_legacy_json(conn: sqlite3.Connection) -> None:
 
     if inserted:
         conn.commit()
+
+    SESSIONS_LEGACY_MIGRATED_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SESSIONS_LEGACY_MIGRATED_PATH.write_text(_now(), encoding="utf-8")
+
+
+def _remove_legacy_session(session_id: str) -> None:
+    if not SESSIONS_JSON_PATH.exists():
+        return
+
+    try:
+        payload = json.loads(SESSIONS_JSON_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return
+
+    if not isinstance(payload, dict):
+        return
+
+    sessions = payload.get("sessions")
+    if not isinstance(sessions, list):
+        return
+
+    filtered_sessions = []
+    removed = False
+    for raw_session in sessions:
+        if not isinstance(raw_session, dict):
+            filtered_sessions.append(raw_session)
+            continue
+        if str(raw_session.get("id") or "") == session_id:
+            removed = True
+            continue
+        filtered_sessions.append(raw_session)
+
+    if not removed:
+        return
+
+    payload["sessions"] = filtered_sessions
+    SESSIONS_JSON_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _ensure_initialized() -> None:
@@ -600,7 +651,10 @@ def delete_session(session_id: str) -> bool:
             _ensure_schema(conn)
             result = conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
             conn.commit()
-            return result.rowcount > 0
+            deleted = result.rowcount > 0
+            if deleted:
+                _remove_legacy_session(session_id)
+            return deleted
         finally:
             conn.close()
 

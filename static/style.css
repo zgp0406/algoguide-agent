@@ -196,6 +196,27 @@ textarea {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.kb-panel-shell {
+  display: grid;
+  gap: 10px;
+}
+
+.kb-toggle-button {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  border-radius: 12px;
+  padding: 0 14px;
+  text-align: left;
+  box-shadow: none;
+}
+
+.kb-toggle-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .kb-select,
 .kb-name-input,
 .kb-file-input {

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import hashlib
 import json
+import os
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from io import BytesIO
@@ -28,11 +29,15 @@ BUILTIN_KB_ID = "builtin-algoguide"
 BUILTIN_KB_NAME = "本地算法知识库"
 DEFAULT_PREVIEW_CHUNKS = 6
 DEFAULT_CHUNK_SIZE = 700
+TEXT_QUALITY_THRESHOLD = 0.62
 
 TOKEN_SPLIT_RE = re.compile(r"\n{2,}")
 SENTENCE_SPLIT_RE = re.compile(r"(?<=[。！？!?\.])\s+")
 MATH_SYMBOL_RE = re.compile(r"[=+\-*/^_<>×÷√∑∏∫≈≠≤≥∂∞∇∈∉∩∪⊂⊆⊃⊇∮∝%]")
 FORMULA_ONLY_RE = re.compile(r"^[\sA-Za-z0-9\u4e00-\u9fff=+\-*/^_<>×÷√∑∏∫≈≠≤≥∂∞∇∈∉∩∪⊂⊆⊃⊇∮∝%().,\[\]{}|:;·•\\]+$")
+SAFE_TEXT_RE = re.compile(r"[A-Za-z0-9\u4e00-\u9fff\s，。！？；：、,.!?;:()（）\[\]{}<>+=\-*/^_×÷√∑∏∫≈≠≤≥∂∞∇∈∉∩∪⊂⊆⊃⊇∮∝%·•/\\|]")
+WORDISH_RE = re.compile(r"[A-Za-z0-9\u4e00-\u9fff]{2,}")
+GARBAGE_CHAR_RE = re.compile(r"[^\w\s\u4e00-\u9fff，。！？；：、,.!?;:()（）\[\]{}<>+=\-*/^_×÷√∑∏∫≈≠≤≥∂∞∇∈∉∩∪⊂⊆⊃⊇∮∝%·•/\\|]")
 
 _LOCK = RLock()
 _INITIALIZED = False
@@ -50,6 +55,84 @@ def _now() -> str:
 
 def _normalize_text(text: str) -> str:
     return " ".join(str(text or "").strip().split())
+
+
+def _safe_text_quality(text: str) -> float:
+    compact = str(text or "").strip()
+    if not compact:
+        return 0.0
+
+    safe_hits = len(SAFE_TEXT_RE.findall(compact))
+    wordish_hits = len(WORDISH_RE.findall(compact))
+    control_hits = len(re.findall(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", compact))
+    replacement_hits = compact.count("\ufffd")
+    garbage_hits = len(GARBAGE_CHAR_RE.findall(compact))
+    suspicious_hits = 0
+    total_hits = 0
+    for char in compact:
+        if char.isspace():
+            continue
+        total_hits += 1
+        category = unicodedata.category(char)
+        if category.startswith(("L", "N", "P", "S")):
+            name = ""
+            try:
+                name = unicodedata.name(char)
+            except ValueError:
+                suspicious_hits += 1
+                continue
+            if any(
+                token in name
+                for token in (
+                    "LATIN",
+                    "CJK",
+                    "HIRAGANA",
+                    "KATAKANA",
+                    "HANGUL",
+                    "IDEOGRAPH",
+                    "FULLWIDTH",
+                    "GREEK",
+                    "CYRILLIC",
+                    "ARABIC",
+                    "DEVANAGARI",
+                    "BENGALI",
+                    "GURMUKHI",
+                    "GUJARATI",
+                    "ORIYA",
+                    "TAMIL",
+                    "TELUGU",
+                    "KANNADA",
+                    "MALAYALAM",
+                    "SINHALA",
+                    "THAI",
+                    "LAO",
+                    "TIBETAN",
+                    "MYANMAR",
+                    "ETHIOPIC",
+                    "COMMON",
+                    "INHERITED",
+                )
+            ):
+                continue
+            suspicious_hits += 1
+            continue
+        suspicious_hits += 1
+
+    ratio = (safe_hits + wordish_hits * 2) / max(len(compact), 1)
+    suspicious_ratio = suspicious_hits / max(total_hits, 1)
+    penalty = (control_hits + replacement_hits + garbage_hits * 1.5 + suspicious_ratio * len(compact)) / max(len(compact), 1)
+    score = ratio - penalty
+    return max(0.0, min(1.0, score))
+
+
+def _text_quality_profile(blocks: list[TextBlock]) -> tuple[float, float]:
+    if not blocks:
+        return 0.0, 1.0
+
+    scores = [_safe_text_quality(block.text) for block in blocks]
+    average = sum(scores) / len(scores)
+    low_fraction = sum(1 for score in scores if score < TEXT_QUALITY_THRESHOLD) / len(scores)
+    return average, low_fraction
 
 
 def _is_formula_like_text(text: str) -> bool:
@@ -88,6 +171,76 @@ def _filter_formula_blocks(blocks: list[TextBlock]) -> tuple[list[TextBlock], in
             continue
         kept.append(block)
     return kept, skipped
+
+
+def _normalize_ocr_text(text: str) -> list[TextBlock]:
+    blocks: list[TextBlock] = []
+    for line_index, raw_line in enumerate(str(text or "").splitlines(), start=1):
+        line = _normalize_text(raw_line)
+        if not line:
+            continue
+        if _is_formula_like_text(line):
+            continue
+        blocks.append(TextBlock(text=line, location=f"OCR 行 {line_index}"))
+    return blocks
+
+
+def _ocr_available() -> bool:
+    try:
+        import fitz  # noqa: F401
+        import pytesseract  # noqa: F401
+        from PIL import Image  # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
+def _extract_pdf_blocks_via_ocr(file_bytes: bytes) -> list[TextBlock]:
+    try:
+        import fitz
+        import pytesseract
+        from PIL import Image
+    except ImportError as exc:
+        raise RuntimeError(
+            "当前 PDF 文档提取质量较差，需要 OCR 兜底，但缺少 OCR 依赖。请安装 pytesseract、pymupdf 和 pillow。"
+        ) from exc
+
+    try:
+        document = fitz.open(stream=file_bytes, filetype="pdf")
+    except Exception as exc:
+        raise RuntimeError("PDF 打开失败，无法进行 OCR 兜底。") from exc
+
+    blocks: list[TextBlock] = []
+    for page_index in range(len(document)):
+        page = document[page_index]
+        pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+        image = Image.open(BytesIO(pixmap.tobytes("png")))
+        ocr_text = pytesseract.image_to_string(image, lang=os.getenv("OCR_LANG", "chi_sim+eng"))
+        for block in _normalize_ocr_text(ocr_text):
+            blocks.append(TextBlock(text=block.text, location=f"第 {page_index + 1} 页 OCR"))
+    return blocks
+
+
+def _extract_pdf_text_blocks(file_bytes: bytes) -> list[TextBlock]:
+    try:
+        from pypdf import PdfReader
+    except ImportError as exc:
+        raise RuntimeError("缺少 pypdf 依赖，请先安装 requirements.txt。") from exc
+
+    reader = PdfReader(BytesIO(file_bytes))
+    blocks: list[TextBlock] = []
+    for page_index, page in enumerate(reader.pages, start=1):
+        raw_text = str(page.extract_text() or "").strip()
+        if not raw_text:
+            continue
+        for line in raw_text.splitlines():
+            text = _normalize_text(line)
+            if not text:
+                continue
+            if _is_formula_like_text(text):
+                continue
+            blocks.append(TextBlock(text=text, location=f"第 {page_index} 页"))
+    return blocks
 
 
 def _summarize_text(text: str, limit: int = 220) -> str:
@@ -316,28 +469,6 @@ def _build_chunks(blocks: list[TextBlock], *, source_label: str, knowledge_base_
     return chunks
 
 
-def _extract_pdf_blocks(file_bytes: bytes) -> list[TextBlock]:
-    try:
-        from pypdf import PdfReader
-    except ImportError as exc:
-        raise RuntimeError("缺少 pypdf 依赖，请先安装 requirements.txt。") from exc
-
-    reader = PdfReader(BytesIO(file_bytes))
-    blocks: list[TextBlock] = []
-    for page_index, page in enumerate(reader.pages, start=1):
-        raw_text = str(page.extract_text() or "").strip()
-        if not raw_text:
-            continue
-        for line in raw_text.splitlines():
-            text = _normalize_text(line)
-            if not text:
-                continue
-            if _is_formula_like_text(text):
-                continue
-            blocks.append(TextBlock(text=text, location=f"第 {page_index} 页"))
-    return blocks
-
-
 def _extract_docx_blocks(file_bytes: bytes) -> list[TextBlock]:
     try:
         from docx import Document
@@ -353,14 +484,39 @@ def _extract_docx_blocks(file_bytes: bytes) -> list[TextBlock]:
     return blocks
 
 
+def _extract_docx_blocks_with_quality(file_bytes: bytes) -> tuple[list[TextBlock], float]:
+    blocks = _extract_docx_blocks(file_bytes)
+    joined_text = "\n\n".join(block.text for block in blocks)
+    return blocks, _safe_text_quality(joined_text)
+
+
 def parse_uploaded_document(filename: str, file_bytes: bytes) -> dict[str, Any]:
     suffix = Path(filename).suffix.lower()
     if suffix == ".pdf":
-        blocks = _extract_pdf_blocks(file_bytes)
+        text_blocks = _extract_pdf_text_blocks(file_bytes)
         mime_type = "application/pdf"
+        text_quality, low_fraction = _text_quality_profile(text_blocks)
+        ocr_blocks: list[TextBlock] = []
+        extraction_mode = "text"
+        ocr_used = False
+        ocr_available = _ocr_available()
+        if ocr_available and (not text_blocks or text_quality < TEXT_QUALITY_THRESHOLD or low_fraction > 0.4):
+            ocr_blocks = _extract_pdf_blocks_via_ocr(file_bytes)
+            ocr_quality, ocr_low_fraction = _text_quality_profile(ocr_blocks)
+            if ocr_blocks and (not text_blocks or ocr_quality >= text_quality or ocr_low_fraction < low_fraction):
+                text_blocks = ocr_blocks
+                text_quality = ocr_quality
+                low_fraction = ocr_low_fraction
+                extraction_mode = "ocr"
+                ocr_used = True
+        blocks = text_blocks
     elif suffix == ".docx":
-        blocks = _extract_docx_blocks(file_bytes)
+        blocks, text_quality = _extract_docx_blocks_with_quality(file_bytes)
         mime_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        extraction_mode = "text"
+        ocr_used = False
+        ocr_available = False
+        _, low_fraction = _text_quality_profile(blocks)
     else:
         raise ValueError("仅支持 PDF 或 .docx 文件")
 
@@ -371,9 +527,40 @@ def parse_uploaded_document(filename: str, file_bytes: bytes) -> dict[str, Any]:
     if not filtered_blocks:
         raise ValueError("没有从文档中提取到可用正文文本，可能以公式或图片为主")
 
+    filtered_quality, filtered_low_fraction = _text_quality_profile(filtered_blocks)
+    if filtered_quality < TEXT_QUALITY_THRESHOLD or filtered_low_fraction > 0.35:
+        if suffix == ".pdf" and not ocr_used and _ocr_available():
+            ocr_blocks = _extract_pdf_blocks_via_ocr(file_bytes)
+            filtered_blocks, skipped_block_count = _filter_formula_blocks(ocr_blocks)
+            if filtered_blocks:
+                filtered_quality, filtered_low_fraction = _text_quality_profile(filtered_blocks)
+                if filtered_quality >= TEXT_QUALITY_THRESHOLD and filtered_low_fraction <= 0.35:
+                    blocks = ocr_blocks
+                    text_quality = filtered_quality
+                    extraction_mode = "ocr"
+                    ocr_used = True
+                else:
+                    raise ValueError("提取质量较差，OCR 兜底后仍不稳定，建议使用更清晰的 PDF")
+            else:
+                raise ValueError("提取质量较差，OCR 兜底后仍不稳定，建议使用更清晰的 PDF")
+        else:
+            raise ValueError("提取质量较差，建议使用可复制文本版文档，或改用 OCR 处理扫描件")
+
     extracted_text = "\n\n".join(block.text for block in filtered_blocks).strip()
+    if text_quality < TEXT_QUALITY_THRESHOLD:
+        if suffix == ".pdf":
+            if ocr_available and not ocr_used:
+                raise ValueError("提取质量较差，OCR 兜底后仍不稳定，建议使用更清晰的 PDF 或图片版文档")
+            if not ocr_available:
+                raise ValueError("提取质量较差，当前环境未启用 OCR 兜底，建议安装 OCR 依赖或更换文档")
+        else:
+            raise ValueError("提取质量较差，建议先导出为可复制文本版 PDF，或重新整理 Word 文档")
+
     summary = _summarize_text(extracted_text, 240)
     chunks = _build_chunks(filtered_blocks, source_label=Path(filename).name, knowledge_base_id="", knowledge_base_name="")
+    extraction_warning = ""
+    if skipped_block_count:
+        extraction_warning = f"已跳过 {skipped_block_count} 个公式块，仅保留正文。"
     preview_chunks = [
         {
             "source": chunk["source"],
@@ -390,6 +577,11 @@ def parse_uploaded_document(filename: str, file_bytes: bytes) -> dict[str, Any]:
         "block_count": len(filtered_blocks),
         "skipped_block_count": skipped_block_count,
         "chunk_count": len(chunks),
+        "text_quality": round(text_quality, 3),
+        "ocr_available": ocr_available if suffix == ".pdf" else False,
+        "ocr_used": ocr_used,
+        "extraction_mode": extraction_mode,
+        "extraction_warning": extraction_warning,
         "summary": summary,
         "extracted_text": extracted_text,
         "blocks": [block.__dict__ for block in filtered_blocks],
@@ -611,6 +803,11 @@ def create_upload_draft(
         "block_count": parsed["block_count"],
         "skipped_block_count": parsed["skipped_block_count"],
         "chunk_count": parsed["chunk_count"],
+        "text_quality": parsed["text_quality"],
+        "ocr_available": parsed["ocr_available"],
+        "ocr_used": parsed["ocr_used"],
+        "extraction_mode": parsed["extraction_mode"],
+        "extraction_warning": parsed["extraction_warning"],
         "summary": parsed["summary"],
         "extracted_text": parsed["extracted_text"],
         "blocks": parsed["blocks"],
@@ -704,12 +901,17 @@ def confirm_upload_draft(
             "document": {
                 "id": document_id,
                 "filename": document["filename"],
-            "summary": document["summary"],
-            "chunk_count": len(document["chunks"]),
-            "skipped_block_count": int(draft.get("skipped_block_count") or 0),
-            "knowledge_base_id": knowledge_base["id"],
-            "knowledge_base_name": knowledge_base["name"],
-        },
+                "summary": document["summary"],
+                "chunk_count": len(document["chunks"]),
+                "skipped_block_count": int(draft.get("skipped_block_count") or 0),
+                "text_quality": float(draft.get("text_quality") or 0.0),
+                "ocr_available": bool(draft.get("ocr_available")),
+                "ocr_used": bool(draft.get("ocr_used")),
+                "extraction_mode": str(draft.get("extraction_mode") or "text"),
+                "extraction_warning": str(draft.get("extraction_warning") or ""),
+                "knowledge_base_id": knowledge_base["id"],
+                "knowledge_base_name": knowledge_base["name"],
+            },
             "knowledge_base": {
                 "id": knowledge_base["id"],
                 "name": knowledge_base["name"],

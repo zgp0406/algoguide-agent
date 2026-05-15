@@ -6,6 +6,8 @@ const promptButtons = document.querySelectorAll("[data-prompt]");
 const chatBadgeText = document.getElementById("chat-badge-text");
 const statusDot = document.querySelector(".status-dot");
 const recentChatsList = document.getElementById("recent-chats");
+const knowledgeToggleButton = document.getElementById("knowledge-toggle");
+const knowledgePanel = document.getElementById("knowledge-panel");
 const knowledgeBaseSelect = document.getElementById("knowledge-base-select");
 const knowledgeBaseNameInput = document.getElementById("knowledge-base-name");
 const knowledgeFileInput = document.getElementById("knowledge-file");
@@ -18,6 +20,7 @@ let currentSessionId = null;
 let recentSessions = [];
 let knowledgeBases = [];
 let pendingKnowledgeDraft = null;
+let knowledgePanelVisible = false;
 let sessionContextMenu = null;
 let sessionContextTarget = null;
 // 用来防止用户在上一轮还没结束时重复提交，导致历史和会话状态错乱。
@@ -238,6 +241,19 @@ function syncKnowledgeBaseNameVisibility() {
   }
 }
 
+function setKnowledgePanelVisible(visible) {
+  knowledgePanelVisible = Boolean(visible);
+  if (knowledgePanel) {
+    knowledgePanel.hidden = !knowledgePanelVisible;
+  }
+  if (knowledgeToggleButton) {
+    knowledgeToggleButton.textContent = knowledgePanelVisible ? "收起知识库" : "添加知识库";
+  }
+  if (knowledgePanelVisible && knowledgePreview && knowledgePreview.classList.contains("knowledge-preview-empty")) {
+    knowledgePreview.focus?.();
+  }
+}
+
 function renderKnowledgeBaseOptions(selectedId = "") {
   if (!knowledgeBaseSelect) return;
 
@@ -313,6 +329,7 @@ function renderKnowledgePreview(draft) {
   if (draft.block_count) parts.push(`${draft.block_count} 片段`);
   if (draft.chunk_count) parts.push(`${draft.chunk_count} 切块`);
   if (draft.skipped_block_count) parts.push(`跳过 ${draft.skipped_block_count} 公式块`);
+  if (draft.extraction_mode === "ocr") parts.push("OCR 兜底");
   meta.textContent = parts.join(" · ");
   knowledgePreview.appendChild(meta);
 
@@ -351,6 +368,13 @@ function renderKnowledgePreview(draft) {
     const warning = document.createElement("div");
     warning.className = "knowledge-preview-warning";
     warning.textContent = "检测到较多公式块，已自动跳过，仅保留正文用于入库。";
+    knowledgePreview.appendChild(warning);
+  }
+
+  if (draft.extraction_warning) {
+    const warning = document.createElement("div");
+    warning.className = "knowledge-preview-warning";
+    warning.textContent = draft.extraction_warning;
     knowledgePreview.appendChild(warning);
   }
 
@@ -895,6 +919,7 @@ async function openSession(sessionId, options = {}) {
 loadStatus();
 loadKnowledgeBases();
 loadRecentChats();
+setKnowledgePanelVisible(false);
 
 knowledgeBaseSelect?.addEventListener("change", () => {
   syncKnowledgeBaseNameVisibility();
@@ -910,6 +935,10 @@ knowledgeBaseNameInput?.addEventListener("input", () => {
 });
 
 knowledgeUploadButton?.addEventListener("click", uploadKnowledgeDocument);
+
+knowledgeToggleButton?.addEventListener("click", () => {
+  setKnowledgePanelVisible(!knowledgePanelVisible);
+});
 
 document.addEventListener("click", () => {
   hideSessionContextMenu();
