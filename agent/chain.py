@@ -14,6 +14,7 @@ from agent.env import load_env_file
 from agent.prompt import SYSTEM_PROMPT
 from agent.retriever import retrieve_with_scores
 from agent.sessions import append_turn, get_session, list_sessions, upsert_session_message
+from agent.telemetry import classify_error, log_event
 
 
 load_env_file()
@@ -32,6 +33,8 @@ class ChatResponse(BaseModel):
     used_rag: bool = False
     knowledge_base: str | None = None
     error: str | None = None
+    error_type: str | None = None
+    error_message: str | None = None
     session_id: str | None = None
     session: dict[str, object] | None = None
 
@@ -72,6 +75,14 @@ def _chunk_text(text: str, size: int = 20) -> Iterator[str]:
 # 把异常统一转成简单可读的字符串，方便前端和日志显示。
 def _error_text(exc: Exception) -> str:
     return f"{exc.__class__.__name__}: {exc}"
+
+
+def _error_payload(error: str | Exception | None) -> tuple[str | None, str | None, str | None]:
+    if error is None:
+        return None, None, None
+    error_text = str(error).strip()
+    error_type, error_message = classify_error(error_text)
+    return error_text, error_type, error_message
 
 
 def _save_user_message(
@@ -400,7 +411,16 @@ def get_api_status(force_refresh: bool = False) -> ApiStatusResponse:
 
 
 def build_context(message: str) -> tuple[str, list[str], list[dict[str, object]], bool, str]:
+    started_at = monotonic()
     chunks = retrieve_with_scores(message)
+    elapsed_ms = round((monotonic() - started_at) * 1000, 2)
+    log_event(
+        "retrieval.completed",
+        query_length=len(message),
+        chunk_count=len(chunks),
+        used_rag=bool(chunks),
+        elapsed_ms=elapsed_ms,
+    )
     if not chunks:
         return message, [], [], False, _knowledge_base_name()
 
@@ -474,6 +494,8 @@ def _build_meta_payload(
     ready: bool,
     session_id: str,
     error: str | None = None,
+    error_type: str | None = None,
+    error_message: str | None = None,
     session: dict[str, object] | None = None,
 ) -> dict[str, object]:
     return {
@@ -484,11 +506,14 @@ def _build_meta_payload(
         "ready": ready,
         "session_id": session_id,
         "error": error,
+        "error_type": error_type,
+        "error_message": error_message,
         "session": session,
     }
 
 
 def chat(request: ChatRequest) -> ChatResponse:
+    started_at = monotonic()
     prompt, sources, evidence, used_rag, knowledge_base = build_context(request.message)
     session_id = request.session_id
     existing_session = get_session(session_id) if session_id else None
@@ -497,10 +522,12 @@ def chat(request: ChatRequest) -> ChatResponse:
     api_key, _, _ = _api_config()
     if api_key:
         try:
+            model_started_at = monotonic()
             answer, _ = _request_chat_completion(
                 _build_model_messages(prompt=prompt, history=request.history, session_summary=session_summary),
                 temperature=0.2,
             )
+            model_elapsed_ms = round((monotonic() - model_started_at) * 1000, 2)
             saved_session_id, storage_error = _save_turn(
                 session_id,
                 user_message=request.message,
@@ -510,9 +537,18 @@ def chat(request: ChatRequest) -> ChatResponse:
                 assistant_used_rag=used_rag,
             )
             session = get_session(saved_session_id)
-            error = None
-            if storage_error:
-                error = f"StorageError: {storage_error}"
+            raw_error = f"StorageError: {storage_error}" if storage_error else None
+            error, error_type, error_message = _error_payload(raw_error)
+            log_event(
+                "chat.completed",
+                mode="completion",
+                used_rag=used_rag,
+                source_count=len(sources),
+                model_elapsed_ms=model_elapsed_ms,
+                elapsed_ms=round((monotonic() - started_at) * 1000, 2),
+                session_id=saved_session_id,
+                error_type=error_type,
+            )
             return ChatResponse(
                 answer=answer,
                 sources=sources,
@@ -520,6 +556,8 @@ def chat(request: ChatRequest) -> ChatResponse:
                 used_rag=used_rag,
                 knowledge_base=knowledge_base,
                 error=error,
+                error_type=error_type,
+                error_message=error_message,
                 session_id=saved_session_id,
                 session=_session_summary(session) if session else None,
             )
@@ -534,9 +572,20 @@ def chat(request: ChatRequest) -> ChatResponse:
                 assistant_used_rag=used_rag,
             )
             session = get_session(saved_session_id)
-            error = f"{exc.__class__.__name__}: {exc}"
+            raw_error = f"{exc.__class__.__name__}: {exc}"
             if storage_error:
-                error = f"{error}; StorageError: {storage_error}"
+                raw_error = f"{raw_error}; StorageError: {storage_error}"
+            error, error_type, error_message = _error_payload(raw_error)
+            log_event(
+                "chat.fallback",
+                mode="completion",
+                used_rag=used_rag,
+                source_count=len(sources),
+                elapsed_ms=round((monotonic() - started_at) * 1000, 2),
+                session_id=saved_session_id,
+                error_type=error_type,
+                error=error,
+            )
             # Fall back to the local response so the demo still works offline.
             # The API path is preferred, but the app remains usable if config is incomplete.
             return ChatResponse(
@@ -546,6 +595,8 @@ def chat(request: ChatRequest) -> ChatResponse:
                 used_rag=used_rag,
                 knowledge_base=knowledge_base,
                 error=error,
+                error_type=error_type,
+                error_message=error_message,
                 session_id=saved_session_id,
                 session=_session_summary(session) if session else None,
             )
@@ -560,9 +611,19 @@ def chat(request: ChatRequest) -> ChatResponse:
         assistant_used_rag=used_rag,
     )
     session = get_session(saved_session_id)
-    error = "Missing OPENAI_API_KEY"
+    raw_error = "Missing OPENAI_API_KEY"
     if storage_error:
-        error = f"{error}; StorageError: {storage_error}"
+        raw_error = f"{raw_error}; StorageError: {storage_error}"
+    error, error_type, error_message = _error_payload(raw_error)
+    log_event(
+        "chat.fallback",
+        mode="local",
+        used_rag=used_rag,
+        source_count=len(sources),
+        elapsed_ms=round((monotonic() - started_at) * 1000, 2),
+        session_id=saved_session_id,
+        error_type=error_type,
+    )
     return ChatResponse(
         answer=fallback_answer,
         sources=sources,
@@ -570,12 +631,15 @@ def chat(request: ChatRequest) -> ChatResponse:
         used_rag=used_rag,
         knowledge_base=knowledge_base,
         error=error,
+        error_type=error_type,
+        error_message=error_message,
         session_id=saved_session_id,
         session=_session_summary(session) if session else None,
     )
 
 
 def stream_chat(request: ChatRequest) -> Iterator[bytes]:
+    started_at = monotonic()
     prompt, sources, evidence, used_rag, knowledge_base = build_context(request.message)
     existing_session = get_session(request.session_id) if request.session_id else None
     session_summary = str(existing_session.get("summary") or "") if existing_session else ""
@@ -588,7 +652,10 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
     api_key, _, _ = _api_config()
     if not api_key:
         answer = local_answer(request.message, sources, used_rag, evidence)
-        meta_error = storage_error
+        raw_error = "Missing OPENAI_API_KEY"
+        if storage_error:
+            raw_error = f"{raw_error}; StorageError: {storage_error}"
+        meta_error, meta_error_type, meta_error_message = _error_payload(raw_error)
         yield _sse_event(
             "meta",
             _build_meta_payload(
@@ -599,6 +666,8 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
                 ready=False,
                 session_id=session_id,
                 error=meta_error,
+                error_type=meta_error_type,
+                error_message=meta_error_message,
             ),
         )
         for chunk in _chunk_text(answer):
@@ -612,7 +681,17 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
         )
         session = get_session(saved_session_id)
         if answer_storage_error:
-            meta_error = answer_storage_error if not meta_error else f"{meta_error}; {answer_storage_error}"
+            raw_error = answer_storage_error if not meta_error else f"{meta_error}; {answer_storage_error}"
+            meta_error, meta_error_type, meta_error_message = _error_payload(raw_error)
+        log_event(
+            "chat.fallback",
+            mode="stream_local",
+            used_rag=used_rag,
+            source_count=len(sources),
+            elapsed_ms=round((monotonic() - started_at) * 1000, 2),
+            session_id=saved_session_id,
+            error_type=meta_error_type,
+        )
         yield _sse_event(
             "done",
             {
@@ -625,6 +704,8 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
                     ready=False,
                     session_id=saved_session_id,
                     error=meta_error,
+                    error_type=meta_error_type,
+                    error_message=meta_error_message,
                     session=_session_summary(session) if session else None,
                 ),
             },
@@ -634,7 +715,7 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
     messages = _build_model_messages(prompt=prompt, history=request.history, session_summary=session_summary)
 
     try:
-        meta_error = storage_error
+        meta_error, meta_error_type, meta_error_message = _error_payload(storage_error)
         yield _sse_event(
             "meta",
             _build_meta_payload(
@@ -645,12 +726,16 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
                 ready=True,
                 session_id=session_id,
                 error=meta_error,
+                error_type=meta_error_type,
+                error_message=meta_error_message,
             ),
         )
+        model_started_at = monotonic()
         answer_parts: list[str] = []
         for chunk in _request_chat_completion_stream(messages, temperature=0.2):
             answer_parts.append(chunk)
             yield _sse_event("delta", {"text": chunk})
+        model_elapsed_ms = round((monotonic() - model_started_at) * 1000, 2)
         answer = "".join(answer_parts)
         saved_session_id, answer_storage_error = _save_answer_message(
             session_id,
@@ -661,7 +746,18 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
         )
         session = get_session(saved_session_id)
         if answer_storage_error:
-            meta_error = answer_storage_error if not meta_error else f"{meta_error}; {answer_storage_error}"
+            raw_error = answer_storage_error if not meta_error else f"{meta_error}; {answer_storage_error}"
+            meta_error, meta_error_type, meta_error_message = _error_payload(raw_error)
+        log_event(
+            "chat.completed",
+            mode="stream",
+            used_rag=used_rag,
+            source_count=len(sources),
+            model_elapsed_ms=model_elapsed_ms,
+            elapsed_ms=round((monotonic() - started_at) * 1000, 2),
+            session_id=saved_session_id,
+            error_type=meta_error_type,
+        )
         yield _sse_event(
             "done",
             {
@@ -674,6 +770,8 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
                     ready=True,
                     session_id=saved_session_id,
                     error=meta_error,
+                    error_type=meta_error_type,
+                    error_message=meta_error_message,
                     session=_session_summary(session) if session else None,
                 ),
             },
@@ -692,11 +790,22 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
             used_rag=used_rag,
         )
         session = get_session(saved_session_id)
-        error_text = _error_text(exc)
+        raw_error = _error_text(exc)
         if storage_error:
-            error_text = f"{error_text}; StorageError: {storage_error}"
+            raw_error = f"{raw_error}; StorageError: {storage_error}"
         if answer_storage_error:
-            error_text = f"{error_text}; StorageError: {answer_storage_error}"
+            raw_error = f"{raw_error}; StorageError: {answer_storage_error}"
+        error_text, error_type, error_message = _error_payload(raw_error)
+        log_event(
+            "chat.fallback",
+            mode="stream",
+            used_rag=used_rag,
+            source_count=len(sources),
+            elapsed_ms=round((monotonic() - started_at) * 1000, 2),
+            session_id=saved_session_id,
+            error_type=error_type,
+            error=error_text,
+        )
         yield _sse_event(
             "meta",
             _build_meta_payload(
@@ -707,6 +816,8 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
                 ready=False,
                 session_id=saved_session_id,
                 error=error_text,
+                error_type=error_type,
+                error_message=error_message,
                 session=_session_summary(session) if session else None,
             ),
         )
@@ -724,6 +835,8 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
                     ready=False,
                     session_id=saved_session_id,
                     error=error_text,
+                    error_type=error_type,
+                    error_message=error_message,
                     session=_session_summary(session) if session else None,
                 ),
             },

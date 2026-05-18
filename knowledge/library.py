@@ -781,6 +781,99 @@ def get_knowledge_base(knowledge_base_id: str) -> dict[str, Any] | None:
         return None
 
 
+def _document_summary(document: dict[str, Any]) -> dict[str, Any]:
+    chunks = document.get("chunks")
+    preview_chunks: list[dict[str, Any]] = []
+    if isinstance(chunks, list):
+        preview_chunks = [
+            {
+                "source": str(chunk.get("source") or document.get("filename") or ""),
+                "location": str(chunk.get("location") or ""),
+                "text": str(chunk.get("text") or ""),
+                "chunk_index": int(chunk.get("chunk_index") or index),
+            }
+            for index, chunk in enumerate(chunks[:5])
+            if isinstance(chunk, dict)
+        ]
+
+    chunk_count = len([chunk for chunk in chunks if isinstance(chunk, dict)]) if isinstance(chunks, list) else 0
+    updated_at = str(document.get("updated_at") or document.get("created_at") or "")
+    created_at = str(document.get("created_at") or updated_at or "")
+    title = str(document.get("title") or document.get("filename") or "未命名文档")
+    filename = str(document.get("filename") or title)
+
+    return {
+        "id": str(document.get("id") or ""),
+        "title": title,
+        "filename": filename,
+        "knowledge_base_id": str(document.get("knowledge_base_id") or ""),
+        "knowledge_base_name": str(document.get("knowledge_base_name") or ""),
+        "source_type": str(document.get("source_type") or ""),
+        "mime_type": str(document.get("mime_type") or ""),
+        "summary": str(document.get("summary") or ""),
+        "created_at": created_at,
+        "updated_at": updated_at,
+        "chunk_count": chunk_count,
+        "status": "已入库" if chunk_count else "待完善",
+        "preview_chunks": preview_chunks,
+    }
+
+
+def list_documents_for_knowledge_base(knowledge_base_id: str) -> list[dict[str, Any]]:
+    ensure_initialized()
+    with _LOCK:
+        store = _load_store_payload()
+        if _seed_builtin_documents(store):
+            _save_store_payload(store)
+
+        documents = []
+        for document in _list_documents(store):
+            if str(document.get("knowledge_base_id") or "") != knowledge_base_id:
+                continue
+            documents.append(_document_summary(document))
+
+        documents.sort(key=lambda item: (item.get("updated_at") or item.get("created_at") or "", item.get("title") or ""), reverse=True)
+        return documents
+
+
+def get_document_detail(document_id: str) -> dict[str, Any] | None:
+    ensure_initialized()
+    with _LOCK:
+        store = _load_store_payload()
+        if _seed_builtin_documents(store):
+            _save_store_payload(store)
+
+        for document in _list_documents(store):
+            if str(document.get("id") or "") != document_id:
+                continue
+            detail = _document_summary(document)
+            detail.update(
+                {
+                    "text": str(document.get("text") or ""),
+                    "blocks": [
+                        {
+                            "text": str(block.get("text") or ""),
+                            "location": str(block.get("location") or ""),
+                        }
+                        for block in document.get("blocks", [])
+                        if isinstance(block, dict)
+                    ],
+                    "chunks": [
+                        {
+                            "source": str(chunk.get("source") or document.get("filename") or ""),
+                            "text": str(chunk.get("text") or ""),
+                            "location": str(chunk.get("location") or ""),
+                            "chunk_index": int(chunk.get("chunk_index") or index),
+                        }
+                        for index, chunk in enumerate(document.get("chunks", []))
+                        if isinstance(chunk, dict)
+                    ],
+                }
+            )
+            return detail
+        return None
+
+
 def create_upload_draft(
     *,
     file_name: str,

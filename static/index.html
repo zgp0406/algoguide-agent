@@ -53,6 +53,13 @@
           </div>
         </div>
 
+        <div class="sidebar-group">
+          <p class="sidebar-label">Knowledge analytics</p>
+          <div id="knowledge-dashboard" class="knowledge-dashboard knowledge-dashboard-empty">
+            <div class="knowledge-dashboard-empty-state">正在加载知识库概览...</div>
+          </div>
+        </div>
+
         <div class="sidebar-group sidebar-bottom">
           <p class="sidebar-label">Shortcuts</p>
           <button type="button" class="sidebar-item" data-prompt="给我一个 C++ 版的动态规划例题。">C++ example</button>
@@ -94,6 +101,19 @@
         </footer>
       </section>
     </main>
+    <div id="knowledge-overlay" class="knowledge-overlay" hidden></div>
+    <aside id="knowledge-drawer" class="knowledge-drawer" aria-hidden="true" hidden>
+      <div class="knowledge-drawer-header">
+        <div>
+          <p class="knowledge-drawer-label">Document details</p>
+          <h2 id="knowledge-drawer-title">文档详情</h2>
+        </div>
+        <button type="button" id="knowledge-drawer-close" class="knowledge-drawer-close" aria-label="关闭文档详情">×</button>
+      </div>
+      <div id="knowledge-drawer-content" class="knowledge-drawer-content">
+        <div class="knowledge-drawer-empty">请选择一个文档查看详情。</div>
+      </div>
+    </aside>
     <script src="/script.js"></script>
   </body>
 </html>

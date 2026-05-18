@@ -10,7 +10,14 @@ from pydantic import BaseModel, Field
 
 from agent.chain import ChatRequest, chat, get_api_status, get_session_detail, list_recent_sessions, stream_chat
 from agent.sessions import delete_session, update_session_title
-from knowledge.library import BUILTIN_KB_ID, create_upload_draft, confirm_upload_draft, list_knowledge_bases
+from knowledge.library import (
+    BUILTIN_KB_ID,
+    create_upload_draft,
+    confirm_upload_draft,
+    get_document_detail,
+    list_documents_for_knowledge_base,
+    list_knowledge_bases,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -95,6 +102,22 @@ def knowledge_bases_api() -> dict[str, object]:
         "knowledge_bases": list_knowledge_bases(),
         "default_knowledge_base_id": BUILTIN_KB_ID,
     }
+
+
+@app.get("/api/knowledge-bases/{knowledge_base_id}/documents")
+def knowledge_base_documents_api(knowledge_base_id: str) -> dict[str, object]:
+    return {
+        "knowledge_base_id": knowledge_base_id,
+        "documents": list_documents_for_knowledge_base(knowledge_base_id),
+    }
+
+
+@app.get("/api/knowledge-documents/{document_id}")
+def knowledge_document_detail_api(document_id: str) -> dict[str, object]:
+    document = get_document_detail(document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    return {"document": document}
 
 
 @app.post("/api/knowledge/upload")
