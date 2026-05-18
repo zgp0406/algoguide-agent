@@ -161,11 +161,66 @@ class KnowledgeManagementTests(unittest.TestCase):
         self.assertEqual(detail["knowledge_base_name"], "新知识库")
         self.assertEqual(detail["chunks"][0]["text"], "动态规划关注状态转移。")
 
+    def test_rename_builtin_knowledge_base_is_allowed(self) -> None:
+        result = library.rename_knowledge_base(library.BUILTIN_KB_ID, "算法基础库")
+
+        self.assertEqual(result["knowledge_base"]["name"], "算法基础库")
+        self.assertEqual(result["knowledge_base"]["kind"], "builtin")
+
     def test_delete_document_removes_it_from_store(self) -> None:
         result = library.delete_document("doc_custom")
 
         self.assertTrue(result["deleted"])
         self.assertIsNone(library.get_document_detail("doc_custom"))
+
+    def test_update_document_rebuilds_text_blocks_and_chunks(self) -> None:
+        result = library.update_document(
+            "doc_custom",
+            title="新标题",
+            text="第一段：前缀和用于快速求区间和。\n\n第二段：动态规划用于状态转移。",
+        )
+        detail = result["document"]
+
+        self.assertEqual(detail["title"], "新标题")
+        self.assertIn("前缀和", detail["text"])
+        self.assertGreaterEqual(detail["chunk_count"], 1)
+        self.assertIn("前缀和", detail["chunks"][0]["text"])
+
+    def test_confirm_new_kb_draft_ignores_stale_builtin_selection(self) -> None:
+        draft_id = "draft_new_kb"
+        draft = {
+            "draft_id": draft_id,
+            "file_name": "new.docx",
+            "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "summary": "新知识库文档",
+            "extracted_text": "这是新知识库里的内容。",
+            "blocks": [{"text": "这是新知识库里的内容。", "location": "段落 1"}],
+            "chunks": [
+                {
+                    "source": "new.docx",
+                    "text": "这是新知识库里的内容。",
+                    "location": "段落 1",
+                    "chunk_index": 0,
+                }
+            ],
+            "target": {
+                "knowledge_base_id": "",
+                "knowledge_base_name": "新建测试库",
+            },
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "confirmed_at": None,
+        }
+        library.DRAFTS_DIR.mkdir(parents=True, exist_ok=True)
+        (library.DRAFTS_DIR / f"{draft_id}.json").write_text(json.dumps(draft, ensure_ascii=False), encoding="utf-8")
+
+        result = library.confirm_upload_draft(
+            draft_id=draft_id,
+            knowledge_base_id=library.BUILTIN_KB_ID,
+        )
+
+        self.assertEqual(result["knowledge_base"]["name"], "新建测试库")
+        self.assertNotEqual(result["knowledge_base"]["id"], library.BUILTIN_KB_ID)
+        self.assertEqual(result["document"]["knowledge_base_name"], "新建测试库")
 
     def test_builtin_knowledge_base_cannot_be_deleted(self) -> None:
         with self.assertRaises(ValueError):

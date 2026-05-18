@@ -19,8 +19,8 @@ from knowledge.library import (
     get_document_detail,
     list_documents_for_knowledge_base,
     list_knowledge_bases,
-    rename_document,
     rename_knowledge_base,
+    update_document,
 )
 
 
@@ -46,7 +46,8 @@ class KnowledgeBaseUpdateRequest(BaseModel):
 
 
 class KnowledgeDocumentUpdateRequest(BaseModel):
-    title: str = Field(min_length=1, max_length=120)
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    text: str | None = Field(default=None, min_length=1)
 
 
 app.add_middleware(
@@ -151,7 +152,7 @@ def knowledge_document_detail_api(document_id: str) -> dict[str, object]:
 @app.put("/api/knowledge-documents/{document_id}")
 def knowledge_document_update_api(document_id: str, request: KnowledgeDocumentUpdateRequest) -> dict[str, object]:
     try:
-        return rename_document(document_id, request.title)
+        return update_document(document_id, title=request.title, text=request.text)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

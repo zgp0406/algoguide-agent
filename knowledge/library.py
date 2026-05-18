@@ -795,8 +795,6 @@ def rename_knowledge_base(knowledge_base_id: str, name: str) -> dict[str, Any]:
         knowledge_base = _find_knowledge_base(store, knowledge_base_id=knowledge_base_id)
         if not knowledge_base:
             raise ValueError("知识库不存在")
-        if str(knowledge_base.get("kind") or "") == "builtin" or str(knowledge_base.get("id") or "") == BUILTIN_KB_ID:
-            raise ValueError("内置知识库不能重命名")
 
         existing = _find_knowledge_base(store, knowledge_base_name=normalized_name)
         if existing and str(existing.get("id") or "") != knowledge_base_id:
@@ -992,6 +990,73 @@ def rename_document(document_id: str, title: str) -> dict[str, Any]:
         raise ValueError("文档不存在")
 
 
+def update_document(
+    document_id: str,
+    *,
+    title: str | None = None,
+    text: str | None = None,
+) -> dict[str, Any]:
+    ensure_initialized()
+    with _LOCK:
+        store = _load_store_payload()
+        if _seed_builtin_documents(store):
+            _save_store_payload(store)
+
+        for document in _list_documents(store):
+            if str(document.get("id") or "") != document_id:
+                continue
+
+            normalized_title = _normalize_text(title) if title is not None else ""
+            if title is not None:
+                if not normalized_title:
+                    raise ValueError("文档标题不能为空")
+                document["title"] = normalized_title
+
+            if text is not None:
+                normalized_text = str(text or "").strip()
+                if not normalized_text:
+                    raise ValueError("文档正文不能为空")
+
+                blocks = [
+                    TextBlock(text=segment, location=f"段落 {index}")
+                    for index, segment in enumerate(_split_text_blocks(normalized_text), start=1)
+                ]
+                if not blocks:
+                    raise ValueError("文档正文不能为空")
+
+                source_label = str(document.get("filename") or document.get("title") or "文档")
+                knowledge_base_id = str(document.get("knowledge_base_id") or "")
+                knowledge_base_name = str(document.get("knowledge_base_name") or "")
+                chunks = _build_chunks(
+                    blocks,
+                    source_label=source_label,
+                    knowledge_base_id=knowledge_base_id,
+                    knowledge_base_name=knowledge_base_name,
+                )
+
+                document["text"] = normalized_text
+                document["summary"] = _summarize_text(normalized_text, 240)
+                document["blocks"] = [block.__dict__ for block in blocks]
+                document["chunks"] = chunks
+
+            if title is None and text is None:
+                raise ValueError("没有可更新的内容")
+
+            document["updated_at"] = _now()
+            knowledge_base = _find_knowledge_base(store, knowledge_base_id=str(document.get("knowledge_base_id") or ""))
+            if knowledge_base:
+                knowledge_base["updated_at"] = document["updated_at"]
+
+            _save_store_payload(store)
+            rebuild_artifacts()
+            return {
+                "document": get_document_detail(document_id),
+                "knowledge_bases": list_knowledge_bases(),
+            }
+
+        raise ValueError("文档不存在")
+
+
 def delete_document(document_id: str) -> dict[str, Any]:
     ensure_initialized()
     with _LOCK:
@@ -1091,10 +1156,14 @@ def confirm_upload_draft(
         if _seed_builtin_documents(store):
             pass
 
-        target_id = str(knowledge_base_id or draft.get("target", {}).get("knowledge_base_id") or "").strip()
-        target_name = _normalize_knowledge_base_name(
-            knowledge_base_name or draft.get("target", {}).get("knowledge_base_name") or ""
-        )
+        draft_target = draft.get("target", {}) if isinstance(draft.get("target"), dict) else {}
+        request_target_name = _normalize_knowledge_base_name(knowledge_base_name or "")
+        draft_target_name = _normalize_knowledge_base_name(draft_target.get("knowledge_base_name") or "")
+        target_name = request_target_name or draft_target_name
+        if target_name:
+            target_id = ""
+        else:
+            target_id = str(knowledge_base_id or draft_target.get("knowledge_base_id") or "").strip()
 
         knowledge_base = None
         if target_id:
