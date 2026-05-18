@@ -445,6 +445,49 @@ textarea {
   margin-bottom: 8px;
 }
 
+.knowledge-kb-actions,
+.knowledge-doc-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.knowledge-kb-actions {
+  margin-top: -2px;
+}
+
+.knowledge-action-button {
+  min-height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.86);
+  padding: 4px 9px;
+  font-size: 0.72rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.knowledge-action-button:hover,
+.knowledge-action-button:focus-visible {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(122, 242, 202, 0.32);
+  outline: none;
+}
+
+.knowledge-action-button.danger {
+  color: #ffd7d7;
+  border-color: rgba(255, 139, 139, 0.24);
+  background: rgba(255, 86, 86, 0.1);
+}
+
+.knowledge-action-button.danger:hover,
+.knowledge-action-button.danger:focus-visible {
+  border-color: rgba(255, 139, 139, 0.44);
+  background: rgba(255, 86, 86, 0.16);
+}
+
 .knowledge-dashboard-docs-wrap {
   display: grid;
   gap: 8px;
@@ -851,6 +894,17 @@ textarea {
   overflow: hidden;
 }
 
+.workspace-view {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace-view[hidden] {
+  display: none !important;
+}
+
 .chat-topbar {
   display: flex;
   align-items: center;
@@ -886,6 +940,61 @@ textarea {
   border-radius: 999px;
   padding: 9px 12px;
   box-shadow: var(--shadow);
+}
+
+.knowledge-manager-topbar {
+  align-items: flex-start;
+}
+
+.knowledge-manager-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.primary-action-button,
+.secondary-action-button {
+  min-height: 38px;
+  border-radius: 10px;
+  padding: 0 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary-action-button {
+  border: 0;
+  background: #10a37f;
+  color: #fff;
+}
+
+.primary-action-button:hover {
+  background: #0d8c6f;
+}
+
+.secondary-action-button {
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+}
+
+.secondary-action-button:hover {
+  background: #f3f4f6;
+}
+
+.knowledge-manager-body {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  padding: 24px;
+  overflow: auto;
+}
+
+.knowledge-manager-body .kb-panel-shell,
+.knowledge-manager-body .knowledge-dashboard {
+  width: min(960px, 100%);
 }
 
 .status-dot {

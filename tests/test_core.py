@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -74,6 +75,101 @@ class DocumentParsingTests(unittest.TestCase):
         self.assertGreater(parsed["chunk_count"], 0)
         self.assertGreater(parsed["text_quality"], 0)
         self.assertTrue(parsed["preview_chunks"])
+
+
+class KnowledgeManagementTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.original_paths = {
+            "DATA_DIR": library.DATA_DIR,
+            "STORE_PATH": library.STORE_PATH,
+            "DRAFTS_DIR": library.DRAFTS_DIR,
+            "DOCS_DIR": library.DOCS_DIR,
+            "_INITIALIZED": library._INITIALIZED,
+        }
+        library.DATA_DIR = self.root / "data"
+        library.STORE_PATH = library.DATA_DIR / "knowledge_store.json"
+        library.DRAFTS_DIR = library.DATA_DIR / "knowledge_drafts"
+        library.DOCS_DIR = self.root / "docs"
+        library._INITIALIZED = False
+        library.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        library.DOCS_DIR.mkdir(parents=True, exist_ok=True)
+        store = {
+            "knowledge_bases": [
+                {
+                    "id": library.BUILTIN_KB_ID,
+                    "name": library.BUILTIN_KB_NAME,
+                    "kind": "builtin",
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                    "updated_at": "2026-01-01T00:00:00+00:00",
+                },
+                {
+                    "id": "kb_custom",
+                    "name": "旧知识库",
+                    "kind": "custom",
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                    "updated_at": "2026-01-01T00:00:00+00:00",
+                },
+            ],
+            "documents": [
+                {
+                    "id": "doc_custom",
+                    "source_key": "upload:test",
+                    "knowledge_base_id": "kb_custom",
+                    "knowledge_base_name": "旧知识库",
+                    "source_type": "upload",
+                    "filename": "dp.docx",
+                    "title": "旧标题",
+                    "summary": "动态规划",
+                    "text": "动态规划关注状态转移。",
+                    "blocks": [{"text": "动态规划关注状态转移。", "location": "段落 1"}],
+                    "chunks": [
+                        {
+                            "source": "dp.docx",
+                            "knowledge_base_id": "kb_custom",
+                            "knowledge_base_name": "旧知识库",
+                            "text": "动态规划关注状态转移。",
+                            "location": "段落 1",
+                            "chunk_index": 0,
+                        }
+                    ],
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                    "updated_at": "2026-01-01T00:00:00+00:00",
+                }
+            ],
+        }
+        library.STORE_PATH.write_text(json.dumps(store, ensure_ascii=False), encoding="utf-8")
+        self.rebuild_patch = mock.patch("knowledge.library.rebuild_artifacts", return_value={"faiss_status": "skipped"})
+        self.rebuild_patch.start()
+
+    def tearDown(self) -> None:
+        self.rebuild_patch.stop()
+        library.DATA_DIR = self.original_paths["DATA_DIR"]
+        library.STORE_PATH = self.original_paths["STORE_PATH"]
+        library.DRAFTS_DIR = self.original_paths["DRAFTS_DIR"]
+        library.DOCS_DIR = self.original_paths["DOCS_DIR"]
+        library._INITIALIZED = self.original_paths["_INITIALIZED"]
+        self.tmp.cleanup()
+
+    def test_rename_knowledge_base_updates_documents_and_chunks(self) -> None:
+        result = library.rename_knowledge_base("kb_custom", "新知识库")
+        detail = library.get_document_detail("doc_custom")
+
+        self.assertEqual(result["knowledge_base"]["name"], "新知识库")
+        assert detail is not None
+        self.assertEqual(detail["knowledge_base_name"], "新知识库")
+        self.assertEqual(detail["chunks"][0]["text"], "动态规划关注状态转移。")
+
+    def test_delete_document_removes_it_from_store(self) -> None:
+        result = library.delete_document("doc_custom")
+
+        self.assertTrue(result["deleted"])
+        self.assertIsNone(library.get_document_detail("doc_custom"))
+
+    def test_builtin_knowledge_base_cannot_be_deleted(self) -> None:
+        with self.assertRaises(ValueError):
+            library.delete_knowledge_base(library.BUILTIN_KB_ID)
 
 
 class RetrieverFallbackTests(unittest.TestCase):

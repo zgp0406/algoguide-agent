@@ -6,6 +6,10 @@ const promptButtons = document.querySelectorAll("[data-prompt]");
 const chatBadgeText = document.getElementById("chat-badge-text");
 const statusDot = document.querySelector(".status-dot");
 const recentChatsList = document.getElementById("recent-chats");
+const chatView = document.getElementById("chat-view");
+const knowledgeManagerView = document.getElementById("knowledge-manager-view");
+const knowledgeManagerLink = document.getElementById("knowledge-manager-link");
+const knowledgeBackChatButton = document.getElementById("knowledge-back-chat");
 const knowledgeToggleButton = document.getElementById("knowledge-toggle");
 const knowledgePanel = document.getElementById("knowledge-panel");
 const knowledgeBaseSelect = document.getElementById("knowledge-base-select");
@@ -44,6 +48,24 @@ let connectionState = {
   model: "",
 };
 const NEW_KNOWLEDGE_BASE_VALUE = "__new__";
+
+function showWorkspaceView(view) {
+  const showKnowledge = view === "knowledge";
+  if (chatView) {
+    chatView.hidden = showKnowledge;
+  }
+  if (knowledgeManagerView) {
+    knowledgeManagerView.hidden = !showKnowledge;
+  }
+  if (knowledgeManagerLink) {
+    knowledgeManagerLink.classList.toggle("active", showKnowledge);
+  }
+  if (showKnowledge) {
+    loadKnowledgeBases();
+  } else {
+    closeKnowledgeDrawer();
+  }
+}
 
 function scrollToBottom() {
   messages.scrollTop = messages.scrollHeight;
@@ -299,6 +321,23 @@ function findKnowledgeDocListContainer(kbId) {
   return document.querySelector(`[data-doc-list-for="${safeId}"]`);
 }
 
+async function parseJsonError(response) {
+  try {
+    const data = await response.json();
+    return data?.detail || `HTTP ${response.status}`;
+  } catch {
+    return `HTTP ${response.status}`;
+  }
+}
+
+async function requestJson(url, options = {}) {
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    throw new Error(await parseJsonError(response));
+  }
+  return response.json();
+}
+
 function setKnowledgeDrawerVisible(visible) {
   const isVisible = Boolean(visible);
   if (knowledgeDrawer) {
@@ -419,11 +458,7 @@ async function fetchKnowledgeDocumentDetail(documentId, fallbackDocument = null)
   }
 
   try {
-    const response = await fetch(`/api/knowledge-documents/${encodeURIComponent(documentId)}`);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const data = await response.json();
+    const data = await requestJson(`/api/knowledge-documents/${encodeURIComponent(documentId)}`);
     if (requestId !== knowledgeDrawerRequestId) return;
     if (data?.document) {
       renderKnowledgeDrawerDocument(data.document);
@@ -451,11 +486,7 @@ async function loadKnowledgeBaseDocuments(kbId, { force = false } = {}) {
   }
 
   try {
-    const response = await fetch(`/api/knowledge-bases/${encodeURIComponent(id)}/documents`);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const data = await response.json();
+    const data = await requestJson(`/api/knowledge-bases/${encodeURIComponent(id)}/documents`);
     const documents = Array.isArray(data.documents) ? data.documents.map(normalizeKnowledgeDocument) : [];
     knowledgeDocumentsCache.set(id, documents);
     return documents;
@@ -489,11 +520,12 @@ function renderKnowledgeBaseDocuments(kbId, documents = [], loading = false) {
   }
 
   list.forEach((doc) => {
-    const item = document.createElement("button");
-    item.type = "button";
+    const item = document.createElement("article");
     item.className = "knowledge-doc-item";
     item.dataset.documentId = doc.id || "";
     item.dataset.kbId = String(kbId || "");
+    item.tabIndex = 0;
+    item.setAttribute("role", "button");
 
     const top = document.createElement("div");
     top.className = "knowledge-doc-item-top";
@@ -523,14 +555,191 @@ function renderKnowledgeBaseDocuments(kbId, documents = [], loading = false) {
       item.appendChild(summary);
     }
 
+    const actions = document.createElement("div");
+    actions.className = "knowledge-doc-actions";
+
+    const renameButton = document.createElement("button");
+    renameButton.type = "button";
+    renameButton.className = "knowledge-action-button";
+    renameButton.textContent = "重命名";
+    renameButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      renameKnowledgeDocument(doc);
+    });
+    actions.appendChild(renameButton);
+
+    if (doc.source_type !== "seed") {
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "knowledge-action-button danger";
+      deleteButton.textContent = "删除";
+      deleteButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        deleteKnowledgeDocument(doc);
+      });
+      actions.appendChild(deleteButton);
+    }
+
+    item.appendChild(actions);
+
     item.addEventListener("click", (event) => {
       event.stopPropagation();
       activeKnowledgeDocumentId = doc.id || "";
       fetchKnowledgeDocumentDetail(doc.id, doc);
     });
 
+    item.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        activeKnowledgeDocumentId = doc.id || "";
+        fetchKnowledgeDocumentDetail(doc.id, doc);
+      }
+    });
+
     container.appendChild(item);
   });
+}
+
+async function refreshKnowledgeState(selectedKbId = "") {
+  try {
+    const data = await requestJson("/api/knowledge-bases");
+    knowledgeBases = Array.isArray(data.knowledge_bases) ? data.knowledge_bases : [];
+    knowledgeDocumentsCache.clear();
+    renderKnowledgeBaseOptions(String(selectedKbId || data.default_knowledge_base_id || knowledgeBases[0]?.id || ""));
+    renderKnowledgeDashboard(knowledgeBases);
+    if (expandedKnowledgeBaseId) {
+      const documents = await loadKnowledgeBaseDocuments(expandedKnowledgeBaseId, { force: true });
+      renderKnowledgeBaseDocuments(expandedKnowledgeBaseId, documents, false);
+    }
+  } catch (error) {
+    window.alert(`刷新知识库失败：${error}`);
+  }
+}
+
+async function renameKnowledgeDocument(doc) {
+  const documentId = String(doc?.id || "");
+  if (!documentId) return;
+
+  const nextTitle = window.prompt("请输入新的文档标题", doc.title || doc.filename || "未命名文档");
+  if (nextTitle === null) return;
+  const title = nextTitle.trim();
+  if (!title) {
+    window.alert("文档标题不能为空。");
+    return;
+  }
+
+  try {
+    const data = await requestJson(`/api/knowledge-documents/${encodeURIComponent(documentId)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    });
+    if (Array.isArray(data.knowledge_bases)) {
+      knowledgeBases = data.knowledge_bases;
+      knowledgeDocumentsCache.delete(String(doc.knowledge_base_id || expandedKnowledgeBaseId || ""));
+      renderKnowledgeDashboard(knowledgeBases);
+      if (expandedKnowledgeBaseId) {
+        const documents = await loadKnowledgeBaseDocuments(expandedKnowledgeBaseId, { force: true });
+        renderKnowledgeBaseDocuments(expandedKnowledgeBaseId, documents, false);
+      }
+    } else {
+      await refreshKnowledgeState(doc.knowledge_base_id || expandedKnowledgeBaseId);
+    }
+    if (activeKnowledgeDocumentId === documentId) {
+      fetchKnowledgeDocumentDetail(documentId, data.document || doc);
+    }
+  } catch (error) {
+    window.alert(`重命名文档失败：${error}`);
+  }
+}
+
+async function deleteKnowledgeDocument(doc) {
+  const documentId = String(doc?.id || "");
+  if (!documentId) return;
+
+  const title = doc.title || doc.filename || "该文档";
+  if (!window.confirm(`确认删除「${title}」吗？删除后会从检索索引中移除。`)) {
+    return;
+  }
+
+  try {
+    const data = await requestJson(`/api/knowledge-documents/${encodeURIComponent(documentId)}`, {
+      method: "DELETE",
+    });
+    if (activeKnowledgeDocumentId === documentId) {
+      closeKnowledgeDrawer();
+    }
+    knowledgeBases = Array.isArray(data.knowledge_bases) ? data.knowledge_bases : knowledgeBases;
+    knowledgeDocumentsCache.delete(String(data.knowledge_base_id || doc.knowledge_base_id || expandedKnowledgeBaseId || ""));
+    renderKnowledgeBaseOptions(String(data.knowledge_base_id || expandedKnowledgeBaseId || ""));
+    renderKnowledgeDashboard(knowledgeBases);
+    if (expandedKnowledgeBaseId) {
+      const documents = await loadKnowledgeBaseDocuments(expandedKnowledgeBaseId, { force: true });
+      renderKnowledgeBaseDocuments(expandedKnowledgeBaseId, documents, false);
+    }
+  } catch (error) {
+    window.alert(`删除文档失败：${error}`);
+  }
+}
+
+async function renameKnowledgeBase(kb) {
+  const kbId = String(kb?.id || "");
+  if (!kbId) return;
+
+  const nextName = window.prompt("请输入新的知识库名称", kb.name || "未命名知识库");
+  if (nextName === null) return;
+  const name = nextName.trim();
+  if (!name) {
+    window.alert("知识库名称不能为空。");
+    return;
+  }
+
+  try {
+    const data = await requestJson(`/api/knowledge-bases/${encodeURIComponent(kbId)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    knowledgeBases = Array.isArray(data.knowledge_bases) ? data.knowledge_bases : knowledgeBases;
+    knowledgeDocumentsCache.delete(kbId);
+    renderKnowledgeBaseOptions(kbId);
+    renderKnowledgeDashboard(knowledgeBases);
+    if (expandedKnowledgeBaseId === kbId) {
+      const documents = await loadKnowledgeBaseDocuments(kbId, { force: true });
+      renderKnowledgeBaseDocuments(kbId, documents, false);
+    }
+  } catch (error) {
+    window.alert(`重命名知识库失败：${error}`);
+  }
+}
+
+async function deleteKnowledgeBase(kb) {
+  const kbId = String(kb?.id || "");
+  if (!kbId) return;
+
+  const name = kb.name || "该知识库";
+  const count = Number(kb.document_count || 0);
+  if (!window.confirm(`确认删除「${name}」吗？其中 ${count} 个文档会一并从索引中移除。`)) {
+    return;
+  }
+
+  try {
+    const data = await requestJson(`/api/knowledge-bases/${encodeURIComponent(kbId)}`, {
+      method: "DELETE",
+    });
+    if (expandedKnowledgeBaseId === kbId) {
+      expandedKnowledgeBaseId = "";
+    }
+    knowledgeDocumentsCache.delete(kbId);
+    knowledgeBases = Array.isArray(data.knowledge_bases) ? data.knowledge_bases : knowledgeBases.filter((item) => item.id !== kbId);
+    renderKnowledgeBaseOptions(String(data.default_knowledge_base_id || knowledgeBases[0]?.id || ""));
+    renderKnowledgeDashboard(knowledgeBases);
+    closeKnowledgeDrawer();
+  } catch (error) {
+    window.alert(`删除知识库失败：${error}`);
+  }
 }
 
 async function toggleKnowledgeBaseDocuments(kbId) {
@@ -639,6 +848,35 @@ function renderKnowledgeDashboard(knowledgeBases = []) {
     kind.textContent = item.kind === "builtin" ? "内置" : "自定义";
     top.appendChild(kind);
     card.appendChild(top);
+
+    if (item.kind !== "builtin") {
+      const actions = document.createElement("div");
+      actions.className = "knowledge-kb-actions";
+
+      const renameButton = document.createElement("button");
+      renameButton.type = "button";
+      renameButton.className = "knowledge-action-button";
+      renameButton.textContent = "重命名";
+      renameButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        renameKnowledgeBase(item);
+      });
+      actions.appendChild(renameButton);
+
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "knowledge-action-button danger";
+      deleteButton.textContent = "删除";
+      deleteButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        deleteKnowledgeBase(item);
+      });
+      actions.appendChild(deleteButton);
+
+      card.appendChild(actions);
+    }
 
     const meta = document.createElement("div");
     meta.className = "knowledge-dashboard-item-meta";
@@ -760,7 +998,7 @@ function setKnowledgePanelVisible(visible) {
     knowledgePanel.hidden = !knowledgePanelVisible;
   }
   if (knowledgeToggleButton) {
-    knowledgeToggleButton.textContent = knowledgePanelVisible ? "收起知识库" : "添加知识库";
+    knowledgeToggleButton.textContent = knowledgePanelVisible ? "收起上传" : "添加知识库";
   }
   if (knowledgePanelVisible && knowledgePreview && knowledgePreview.classList.contains("knowledge-preview-empty")) {
     knowledgePreview.focus?.();
@@ -1413,6 +1651,7 @@ async function loadRecentChats() {
 
 async function openSession(sessionId, options = {}) {
   try {
+    showWorkspaceView("chat");
     const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
@@ -1456,6 +1695,14 @@ knowledgeBaseNameInput?.addEventListener("input", () => {
 });
 
 knowledgeUploadButton?.addEventListener("click", uploadKnowledgeDocument);
+
+knowledgeManagerLink?.addEventListener("click", () => {
+  showWorkspaceView("knowledge");
+});
+
+knowledgeBackChatButton?.addEventListener("click", () => {
+  showWorkspaceView("chat");
+});
 
 knowledgeToggleButton?.addEventListener("click", () => {
   setKnowledgePanelVisible(!knowledgePanelVisible);
@@ -1501,6 +1748,7 @@ window.addEventListener("resize", hideSessionContextMenu);
 
 promptButtons.forEach((button) => {
   button.addEventListener("click", () => {
+    showWorkspaceView("chat");
     const prompt = button.dataset.prompt || "";
     input.value = prompt;
     input.focus();
@@ -1512,6 +1760,7 @@ promptButtons.forEach((button) => {
 });
 
 newChatButton?.addEventListener("click", () => {
+  showWorkspaceView("chat");
   currentSessionId = null;
   history.length = 0;
   input.value = "";

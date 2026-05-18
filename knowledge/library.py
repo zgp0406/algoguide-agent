@@ -781,6 +781,98 @@ def get_knowledge_base(knowledge_base_id: str) -> dict[str, Any] | None:
         return None
 
 
+def rename_knowledge_base(knowledge_base_id: str, name: str) -> dict[str, Any]:
+    ensure_initialized()
+    with _LOCK:
+        normalized_name = _normalize_knowledge_base_name(name)
+        if not normalized_name:
+            raise ValueError("知识库名称不能为空")
+
+        store = _load_store_payload()
+        if _seed_builtin_documents(store):
+            _save_store_payload(store)
+
+        knowledge_base = _find_knowledge_base(store, knowledge_base_id=knowledge_base_id)
+        if not knowledge_base:
+            raise ValueError("知识库不存在")
+        if str(knowledge_base.get("kind") or "") == "builtin" or str(knowledge_base.get("id") or "") == BUILTIN_KB_ID:
+            raise ValueError("内置知识库不能重命名")
+
+        existing = _find_knowledge_base(store, knowledge_base_name=normalized_name)
+        if existing and str(existing.get("id") or "") != knowledge_base_id:
+            raise ValueError("同名知识库已存在")
+
+        now = _now()
+        old_name = str(knowledge_base.get("name") or "")
+        knowledge_base["name"] = normalized_name
+        knowledge_base["updated_at"] = now
+
+        for document in _list_documents(store):
+            if str(document.get("knowledge_base_id") or "") != knowledge_base_id:
+                continue
+            document["knowledge_base_name"] = normalized_name
+            document["updated_at"] = now
+            chunks = document.get("chunks")
+            if isinstance(chunks, list):
+                for chunk in chunks:
+                    if isinstance(chunk, dict):
+                        chunk["knowledge_base_name"] = normalized_name
+
+        _save_store_payload(store)
+        rebuild_artifacts()
+        return {
+            "knowledge_base": {
+                "id": knowledge_base_id,
+                "name": normalized_name,
+                "old_name": old_name,
+                "kind": str(knowledge_base.get("kind") or "custom"),
+            },
+            "knowledge_bases": list_knowledge_bases(),
+        }
+
+
+def delete_knowledge_base(knowledge_base_id: str) -> dict[str, Any]:
+    ensure_initialized()
+    with _LOCK:
+        store = _load_store_payload()
+        if _seed_builtin_documents(store):
+            _save_store_payload(store)
+
+        knowledge_base = _find_knowledge_base(store, knowledge_base_id=knowledge_base_id)
+        if not knowledge_base:
+            raise ValueError("知识库不存在")
+        if str(knowledge_base.get("kind") or "") == "builtin" or str(knowledge_base.get("id") or "") == BUILTIN_KB_ID:
+            raise ValueError("内置知识库不能删除")
+
+        documents = store.get("documents", [])
+        kept_documents = []
+        deleted_document_count = 0
+        if isinstance(documents, list):
+            for document in documents:
+                if not isinstance(document, dict):
+                    kept_documents.append(document)
+                    continue
+                if str(document.get("knowledge_base_id") or "") == knowledge_base_id:
+                    deleted_document_count += 1
+                    continue
+                kept_documents.append(document)
+        store["documents"] = kept_documents
+        store["knowledge_bases"] = [
+            item
+            for item in store.get("knowledge_bases", [])
+            if isinstance(item, dict) and str(item.get("id") or "") != knowledge_base_id
+        ]
+
+        _save_store_payload(store)
+        rebuild_artifacts()
+        return {
+            "deleted": True,
+            "knowledge_base_id": knowledge_base_id,
+            "deleted_document_count": deleted_document_count,
+            "knowledge_bases": list_knowledge_bases(),
+        }
+
+
 def _document_summary(document: dict[str, Any]) -> dict[str, Any]:
     chunks = document.get("chunks")
     preview_chunks: list[dict[str, Any]] = []
@@ -872,6 +964,75 @@ def get_document_detail(document_id: str) -> dict[str, Any] | None:
             )
             return detail
         return None
+
+
+def rename_document(document_id: str, title: str) -> dict[str, Any]:
+    ensure_initialized()
+    with _LOCK:
+        normalized_title = _normalize_text(title)
+        if not normalized_title:
+            raise ValueError("文档标题不能为空")
+
+        store = _load_store_payload()
+        if _seed_builtin_documents(store):
+            _save_store_payload(store)
+
+        for document in _list_documents(store):
+            if str(document.get("id") or "") != document_id:
+                continue
+            document["title"] = normalized_title
+            document["updated_at"] = _now()
+            _save_store_payload(store)
+            rebuild_artifacts()
+            return {
+                "document": _document_summary(document),
+                "knowledge_bases": list_knowledge_bases(),
+            }
+
+        raise ValueError("文档不存在")
+
+
+def delete_document(document_id: str) -> dict[str, Any]:
+    ensure_initialized()
+    with _LOCK:
+        store = _load_store_payload()
+        if _seed_builtin_documents(store):
+            _save_store_payload(store)
+
+        documents = store.get("documents", [])
+        if not isinstance(documents, list):
+            raise ValueError("文档不存在")
+
+        deleted_document: dict[str, Any] | None = None
+        kept_documents = []
+        for document in documents:
+            if not isinstance(document, dict):
+                kept_documents.append(document)
+                continue
+            if str(document.get("id") or "") == document_id:
+                deleted_document = document
+                continue
+            kept_documents.append(document)
+
+        if not deleted_document:
+            raise ValueError("文档不存在")
+        if str(deleted_document.get("source_type") or "") == "seed":
+            raise ValueError("内置文档不能删除")
+
+        knowledge_base_id = str(deleted_document.get("knowledge_base_id") or "")
+        store["documents"] = kept_documents
+        knowledge_base = _find_knowledge_base(store, knowledge_base_id=knowledge_base_id)
+        if knowledge_base:
+            knowledge_base["updated_at"] = _now()
+
+        _save_store_payload(store)
+        rebuild_artifacts()
+        return {
+            "deleted": True,
+            "document_id": document_id,
+            "knowledge_base_id": knowledge_base_id,
+            "knowledge_bases": list_knowledge_bases(),
+        }
 
 
 def create_upload_draft(

@@ -14,9 +14,13 @@ from knowledge.library import (
     BUILTIN_KB_ID,
     create_upload_draft,
     confirm_upload_draft,
+    delete_document,
+    delete_knowledge_base,
     get_document_detail,
     list_documents_for_knowledge_base,
     list_knowledge_bases,
+    rename_document,
+    rename_knowledge_base,
 )
 
 
@@ -35,6 +39,14 @@ class KnowledgeConfirmRequest(BaseModel):
     draft_id: str = Field(min_length=1)
     knowledge_base_id: str | None = None
     knowledge_base_name: str | None = Field(default=None, max_length=80)
+
+
+class KnowledgeBaseUpdateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class KnowledgeDocumentUpdateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
 
 
 app.add_middleware(
@@ -112,12 +124,44 @@ def knowledge_base_documents_api(knowledge_base_id: str) -> dict[str, object]:
     }
 
 
+@app.put("/api/knowledge-bases/{knowledge_base_id}")
+def knowledge_base_update_api(knowledge_base_id: str, request: KnowledgeBaseUpdateRequest) -> dict[str, object]:
+    try:
+        return rename_knowledge_base(knowledge_base_id, request.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/knowledge-bases/{knowledge_base_id}")
+def knowledge_base_delete_api(knowledge_base_id: str) -> dict[str, object]:
+    try:
+        return delete_knowledge_base(knowledge_base_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/api/knowledge-documents/{document_id}")
 def knowledge_document_detail_api(document_id: str) -> dict[str, object]:
     document = get_document_detail(document_id)
     if not document:
         raise HTTPException(status_code=404, detail="文档不存在")
     return {"document": document}
+
+
+@app.put("/api/knowledge-documents/{document_id}")
+def knowledge_document_update_api(document_id: str, request: KnowledgeDocumentUpdateRequest) -> dict[str, object]:
+    try:
+        return rename_document(document_id, request.title)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/knowledge-documents/{document_id}")
+def knowledge_document_delete_api(document_id: str) -> dict[str, object]:
+    try:
+        return delete_document(document_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/knowledge/upload")

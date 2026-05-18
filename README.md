@@ -22,6 +22,33 @@ AlgoGuide Agent 是一个面向算法学习场景的 AI 助手原型。它不是
 
 ![功能设计页](tmp/presentations/algoguide-defense/scratch/slides/slide-04.png)
 
+## 产品截图和架构
+
+项目首页就是可用的聊天工作台：左侧管理会话、上传知识库和查看知识库总览，右侧进行算法问答并展示引用片段。
+
+建议放在作品集或简历里的截图：
+
+- **聊天问答截图**：展示用户提问、流式回答、来源引用和错误兜底提示。
+- **知识库管理截图**：展示知识库总览、文档列表、文档详情抽屉、重命名和删除操作。
+- **上传预览截图**：展示 PDF / Word 上传后的摘要、切块数量、OCR 状态和确认入库按钮。
+
+核心架构可以概括为：
+
+```mermaid
+flowchart LR
+  U[用户浏览器] --> F[静态前端]
+  F --> A[FastAPI 接口]
+  A --> S[SQLite 会话存储]
+  A --> K[知识库 Store]
+  K --> I[index_meta.json / FAISS]
+  A --> R[检索模块]
+  R --> I
+  A --> M[OpenAI 兼容模型接口]
+  M --> A
+  A --> L[本地兜底回答]
+  A --> F
+```
+
 ## 项目亮点
 
 - **完整闭环**：从用户提问到知识检索、模型生成、来源引用、会话保存，整条链路都能跑通。
@@ -217,6 +244,19 @@ python knowledge/build_index.py
 ```bash
 uvicorn app:app --reload
 ```
+
+或者直接使用一键启动脚本：
+
+```powershell
+.\scripts\start.ps1
+```
+
+可选参数：
+
+- `-Port 8010`：指定服务端口
+- `-SkipInstall`：跳过依赖安装
+- `-SkipIndex`：跳过索引构建
+- `-InstallSemanticDeps`：额外安装 FAISS / sentence-transformers 语义检索依赖
 
 ### 6. 打开浏览器
 
