@@ -30,7 +30,7 @@ AlgoGuide Agent 是一个面向算法学习场景的 AI 助手原型。它不是
 
 - **聊天问答截图**：展示用户提问、流式回答、来源引用和错误兜底提示。
 - **知识库管理截图**：展示知识库总览、文档列表、文档详情抽屉、重命名和删除操作。
-- **上传预览截图**：展示 PDF / Word 上传后的摘要、切块数量、OCR 状态和确认入库按钮。
+- **上传预览截图**：展示 PDF / Word / PPTX / Markdown / LaTeX 上传后的摘要、切块数量、OCR 状态和确认入库按钮。
 
 核心架构可以概括为：
 
@@ -157,6 +157,24 @@ flowchart LR
 
 这能让项目在演示时更像一个“可解释的问答系统”，而不只是一个普通聊天页面。
 
+### 6. 知识库文档导入
+
+当前知识库上传支持这些格式：
+
+- `PDF`
+- `DOCX`
+- `PPTX`
+- `Markdown` (`.md` / `.markdown`)
+- `TXT`
+- `LaTeX` (`.tex` / `.latex`)
+
+说明：
+
+- 扫描版或低质量 PDF 会优先走普通文本提取，必要时自动尝试 OCR。
+- 旧版 `PPT` (`.ppt`) 目前不直接解析，建议先另存为 `PPTX` 再上传。
+- Markdown 和 LaTeX 会先做一层轻量清洗，再进入切块和索引流程。
+- 默认上传大小上限是 `50MB`，可通过 `.env` 里的 `UPLOAD_MAX_BYTES` 调整。
+
 ## 接口说明
 
 - `GET /api/health`：健康检查
@@ -217,6 +235,8 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```bash
 pip install -r requirements.txt
 ```
+
+如果你希望扫描版 PDF 也能更稳定识别，除了 Python 依赖外，还需要在系统里安装 `Tesseract OCR` 可执行程序；安装后默认会按 `chi_sim+eng` 语言包做识别，也可以通过环境变量 `OCR_LANG` 调整。
 
 如果你要启用语义检索，再额外安装：
 
@@ -300,6 +320,7 @@ OPENAI_TIMEOUT_SECONDS=60
 - `OPENAI_BASE_URL`：OpenAI 兼容接口地址
 - `OPENAI_TIMEOUT_SECONDS`：请求超时时间，网络慢时可以调大
 - `EMBEDDING_MODEL_NAME`：本地 embedding 模型名称，默认是 `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`
+- `UPLOAD_MAX_BYTES`：知识库单文件上传大小上限，默认 `52428800`，也就是 `50MB`
 
 ## 为什么要有 `.env.example`
 

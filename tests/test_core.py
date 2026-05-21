@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import os
 import json
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from docx import Document
+from fastapi import HTTPException
 
+import app as app_module
 from agent import chain, retriever, sessions
 from knowledge import library
 
@@ -75,6 +79,99 @@ class DocumentParsingTests(unittest.TestCase):
         self.assertGreater(parsed["chunk_count"], 0)
         self.assertGreater(parsed["text_quality"], 0)
         self.assertTrue(parsed["preview_chunks"])
+
+    def test_markdown_upload_parsing_strips_basic_markup(self) -> None:
+        content = b"# \xe5\x89\x8d\xe7\xbc\x80\xe5\x92\x8c\n\n- \xe7\x94\xa8\xe4\xba\x8e\xe5\xbf\xab\xe9\x80\x9f\xe6\xb1\x82\xe5\x8c\xba\xe9\x97\xb4\xe5\x92\x8c\n\n`sum[i] = sum[i-1] + a[i]`"
+
+        parsed = library.parse_uploaded_document("prefix_sum.md", content)
+
+        self.assertEqual(parsed["mime_type"], "text/markdown")
+        self.assertIn("前缀和", parsed["extracted_text"])
+        self.assertIn("用于快速求区间和", parsed["extracted_text"])
+        self.assertGreater(parsed["chunk_count"], 0)
+
+    def test_latex_upload_parsing_extracts_readable_text(self) -> None:
+        content = r"""
+        \section{动态规划}
+        动态规划适合处理重叠子问题。
+        \begin{itemize}
+        \item 状态定义
+        \item 状态转移
+        \end{itemize}
+        $dp[i] = \min(dp[i-1], dp[i-2])$
+        """.encode("utf-8")
+
+        parsed = library.parse_uploaded_document("dp.tex", content)
+
+        self.assertEqual(parsed["mime_type"], "application/x-latex")
+        self.assertIn("动态规划", parsed["extracted_text"])
+        self.assertIn("状态定义", parsed["extracted_text"])
+        self.assertNotIn("min(dp", parsed["extracted_text"])
+
+    def test_pptx_upload_parsing_uses_python_pptx_when_available(self) -> None:
+        fake_pptx = types.ModuleType("pptx")
+
+        class FakeShape:
+            def __init__(self, text: str) -> None:
+                self.text = text
+
+        class FakeSlide:
+            def __init__(self, shapes) -> None:
+                self.shapes = shapes
+
+        class FakePresentation:
+            def __init__(self, _stream) -> None:
+                self.slides = [
+                    FakeSlide([FakeShape("BFS 适合按层遍历。"), FakeShape("")]),
+                    FakeSlide([FakeShape("动态规划关注状态转移。")]),
+                ]
+
+        fake_pptx.Presentation = FakePresentation
+
+        with mock.patch.dict(sys.modules, {"pptx": fake_pptx}):
+            parsed = library.parse_uploaded_document("algo.pptx", b"fake-pptx")
+
+        self.assertEqual(
+            parsed["mime_type"],
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        )
+        self.assertIn("BFS", parsed["extracted_text"])
+        self.assertIn("状态转移", parsed["extracted_text"])
+
+    def test_ppt_upload_reports_conversion_hint(self) -> None:
+        with self.assertRaisesRegex(ValueError, "另存为 \\.pptx"):
+            library.parse_uploaded_document("legacy.ppt", b"legacy")
+
+    def test_pdf_without_tesseract_falls_back_to_text_extraction_with_warning(self) -> None:
+        blocks = [library.TextBlock(text="前缀和可以快速求区间和。", location="第 1 页")]
+
+        with mock.patch("knowledge.library._extract_pdf_text_blocks", return_value=blocks), mock.patch(
+            "knowledge.library._ocr_available",
+            return_value=True,
+        ), mock.patch(
+            "knowledge.library._text_quality_profile",
+            return_value=(0.2, 0.5),
+        ), mock.patch(
+            "knowledge.library._extract_pdf_blocks_via_ocr",
+            side_effect=RuntimeError("已安装 OCR Python 依赖，但系统未安装 Tesseract 可执行程序。"),
+        ):
+            parsed = library.parse_uploaded_document("scan.pdf", b"fake-pdf")
+
+        self.assertEqual(parsed["extraction_mode"], "text")
+        self.assertFalse(parsed["ocr_used"])
+        self.assertIn("Tesseract", parsed["extraction_warning"])
+        self.assertIn("前缀和", parsed["extracted_text"])
+
+    def test_pdf_without_tesseract_and_without_text_raises_clear_error(self) -> None:
+        with mock.patch("knowledge.library._extract_pdf_text_blocks", return_value=[]), mock.patch(
+            "knowledge.library._ocr_available",
+            return_value=True,
+        ), mock.patch(
+            "knowledge.library._extract_pdf_blocks_via_ocr",
+            side_effect=RuntimeError("已安装 OCR Python 依赖，但系统未安装 Tesseract 可执行程序。"),
+        ):
+            with self.assertRaisesRegex(ValueError, "Tesseract"):
+                library.parse_uploaded_document("scan.pdf", b"fake-pdf")
 
 
 class KnowledgeManagementTests(unittest.TestCase):
@@ -222,6 +319,32 @@ class KnowledgeManagementTests(unittest.TestCase):
         self.assertNotEqual(result["knowledge_base"]["id"], library.BUILTIN_KB_ID)
         self.assertEqual(result["document"]["knowledge_base_name"], "新建测试库")
 
+    def test_cancel_upload_draft_removes_pending_file(self) -> None:
+        draft_id = "draft_cancel_me"
+        draft = {
+            "draft_id": draft_id,
+            "file_name": "cancel.docx",
+            "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "summary": "待取消草稿",
+            "extracted_text": "这是一份待取消的草稿。",
+            "blocks": [{"text": "这是一份待取消的草稿。", "location": "段落 1"}],
+            "chunks": [],
+            "target": {
+                "knowledge_base_id": "kb_custom",
+                "knowledge_base_name": "",
+            },
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "confirmed_at": None,
+        }
+        library.DRAFTS_DIR.mkdir(parents=True, exist_ok=True)
+        draft_path = library.DRAFTS_DIR / f"{draft_id}.json"
+        draft_path.write_text(json.dumps(draft, ensure_ascii=False), encoding="utf-8")
+
+        result = library.cancel_upload_draft(draft_id=draft_id)
+
+        self.assertTrue(result["cancelled"])
+        self.assertFalse(draft_path.exists())
+
     def test_builtin_knowledge_base_cannot_be_deleted(self) -> None:
         with self.assertRaises(ValueError):
             library.delete_knowledge_base(library.BUILTIN_KB_ID)
@@ -280,6 +403,20 @@ class ChatFallbackTests(IsolatedSessionsMixin, unittest.TestCase):
         self.assertIn("OPENAI_API_KEY", response.error or "")
         self.assertIsNotNone(response.session_id)
         self.assertIsNotNone(sessions.get_session(str(response.session_id)))
+
+
+class UploadLimitTests(unittest.TestCase):
+    def test_upload_limit_defaults_to_regular_document_size(self) -> None:
+        with mock.patch.dict(os.environ, {"UPLOAD_MAX_BYTES": ""}, clear=False):
+            self.assertEqual(app_module._upload_max_bytes(), 50 * 1024 * 1024)
+
+    def test_oversized_upload_returns_413(self) -> None:
+        with mock.patch.dict(os.environ, {"UPLOAD_MAX_BYTES": "10"}, clear=False):
+            with self.assertRaises(HTTPException) as context:
+                app_module._reject_oversized_upload(11)
+
+        self.assertEqual(context.exception.status_code, 413)
+        self.assertIn("文件过大", str(context.exception.detail))
 
 
 if __name__ == "__main__":

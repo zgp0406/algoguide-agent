@@ -4,6 +4,7 @@ import json
 import os
 import re
 import unicodedata
+from html import unescape
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from io import BytesIO
@@ -30,6 +31,7 @@ BUILTIN_KB_NAME = "本地算法知识库"
 DEFAULT_PREVIEW_CHUNKS = 6
 DEFAULT_CHUNK_SIZE = 700
 TEXT_QUALITY_THRESHOLD = 0.62
+TEXT_FILE_SUFFIXES = {".md", ".markdown", ".txt", ".tex", ".latex"}
 
 TOKEN_SPLIT_RE = re.compile(r"\n{2,}")
 SENTENCE_SPLIT_RE = re.compile(r"(?<=[。！？!?\.])\s+")
@@ -215,7 +217,10 @@ def _extract_pdf_blocks_via_ocr(file_bytes: bytes) -> list[TextBlock]:
         page = document[page_index]
         pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
         image = Image.open(BytesIO(pixmap.tobytes("png")))
-        ocr_text = pytesseract.image_to_string(image, lang=os.getenv("OCR_LANG", "chi_sim+eng"))
+        try:
+            ocr_text = pytesseract.image_to_string(image, lang=os.getenv("OCR_LANG", "chi_sim+eng"))
+        except pytesseract.TesseractNotFoundError as exc:
+            raise RuntimeError("已安装 OCR Python 依赖，但系统未安装 Tesseract 可执行程序。") from exc
         for block in _normalize_ocr_text(ocr_text):
             blocks.append(TextBlock(text=block.text, location=f"第 {page_index + 1} 页 OCR"))
     return blocks
@@ -490,8 +495,93 @@ def _extract_docx_blocks_with_quality(file_bytes: bytes) -> tuple[list[TextBlock
     return blocks, _safe_text_quality(joined_text)
 
 
+def _decode_text_file(file_bytes: bytes) -> str:
+    for encoding in ("utf-8", "utf-8-sig", "gb18030", "gbk", "latin-1"):
+        try:
+            return file_bytes.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise ValueError("文本文件解码失败，请确认文件编码为 UTF-8、GBK 或 GB18030")
+
+
+def _strip_markdown_markup(text: str) -> str:
+    cleaned = str(text or "")
+    cleaned = re.sub(r"```[\s\S]*?```", "\n", cleaned)
+    cleaned = re.sub(r"`([^`]+)`", r"\1", cleaned)
+    cleaned = re.sub(r"!\[[^\]]*\]\([^)]+\)", " ", cleaned)
+    cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", cleaned)
+    cleaned = re.sub(r"^\s{0,3}(#{1,6})\s*", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"^\s{0,3}>\s?", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"^\s*[-*+]\s+", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"^\s*\d+\.\s+", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"\*\*([^*]+)\*\*", r"\1", cleaned)
+    cleaned = re.sub(r"\*([^*]+)\*", r"\1", cleaned)
+    cleaned = re.sub(r"_([^_]+)_", r"\1", cleaned)
+    cleaned = re.sub(r"~~([^~]+)~~", r"\1", cleaned)
+    cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+    return unescape(cleaned)
+
+
+def _strip_latex_markup(text: str) -> str:
+    cleaned = str(text or "")
+    cleaned = re.sub(r"(?m)^\s*%.*$", "", cleaned)
+    cleaned = re.sub(r"\\begin\{[^}]+\}", "\n", cleaned)
+    cleaned = re.sub(r"\\end\{[^}]+\}", "\n", cleaned)
+    cleaned = re.sub(r"\\(sub)*section\*?\{([^}]*)\}", r"\2\n", cleaned)
+    cleaned = re.sub(r"\\chapter\*?\{([^}]*)\}", r"\1\n", cleaned)
+    cleaned = re.sub(r"\\textbf\{([^}]*)\}", r"\1", cleaned)
+    cleaned = re.sub(r"\\textit\{([^}]*)\}", r"\1", cleaned)
+    cleaned = re.sub(r"\\emph\{([^}]*)\}", r"\1", cleaned)
+    cleaned = re.sub(r"\\item\s*", "", cleaned)
+    cleaned = re.sub(r"\$\$[\s\S]*?\$\$", "\n", cleaned)
+    cleaned = re.sub(r"\$[^$\n]+\$", " ", cleaned)
+    cleaned = re.sub(r"\\[A-Za-z]+(\[[^\]]*\])?\{([^}]*)\}", r"\2", cleaned)
+    cleaned = re.sub(r"\\[A-Za-z]+\*?(\[[^\]]*\])?", " ", cleaned)
+    cleaned = re.sub(r"[{}]", " ", cleaned)
+    return cleaned
+
+
+def _extract_text_like_blocks(file_bytes: bytes, *, suffix: str) -> tuple[list[TextBlock], str]:
+    raw_text = _decode_text_file(file_bytes)
+    normalized_suffix = str(suffix or "").lower()
+    if normalized_suffix in {".md", ".markdown"}:
+        content = _strip_markdown_markup(raw_text)
+        mime_type = "text/markdown"
+    elif normalized_suffix in {".tex", ".latex"}:
+        content = _strip_latex_markup(raw_text)
+        mime_type = "application/x-latex"
+    else:
+        content = raw_text
+        mime_type = "text/plain"
+
+    blocks = [
+        TextBlock(text=segment, location=f"段落 {index}")
+        for index, segment in enumerate(_split_text_blocks(content), start=1)
+        if _normalize_text(segment)
+    ]
+    return blocks, mime_type
+
+
+def _extract_pptx_blocks(file_bytes: bytes) -> list[TextBlock]:
+    try:
+        from pptx import Presentation
+    except ImportError as exc:
+        raise RuntimeError("缺少 python-pptx 依赖，请先安装 requirements.txt。") from exc
+
+    presentation = Presentation(BytesIO(file_bytes))
+    blocks: list[TextBlock] = []
+    for slide_index, slide in enumerate(getattr(presentation, "slides", []), start=1):
+        for shape_index, shape in enumerate(getattr(slide, "shapes", []), start=1):
+            text = _normalize_text(getattr(shape, "text", ""))
+            if not text or _is_formula_like_text(text):
+                continue
+            blocks.append(TextBlock(text=text, location=f"第 {slide_index} 页 · 元素 {shape_index}"))
+    return blocks
+
+
 def parse_uploaded_document(filename: str, file_bytes: bytes) -> dict[str, Any]:
     suffix = Path(filename).suffix.lower()
+    extraction_warning = ""
     if suffix == ".pdf":
         text_blocks = _extract_pdf_text_blocks(file_bytes)
         mime_type = "application/pdf"
@@ -501,14 +591,18 @@ def parse_uploaded_document(filename: str, file_bytes: bytes) -> dict[str, Any]:
         ocr_used = False
         ocr_available = _ocr_available()
         if ocr_available and (not text_blocks or text_quality < TEXT_QUALITY_THRESHOLD or low_fraction > 0.4):
-            ocr_blocks = _extract_pdf_blocks_via_ocr(file_bytes)
-            ocr_quality, ocr_low_fraction = _text_quality_profile(ocr_blocks)
-            if ocr_blocks and (not text_blocks or ocr_quality >= text_quality or ocr_low_fraction < low_fraction):
-                text_blocks = ocr_blocks
-                text_quality = ocr_quality
-                low_fraction = ocr_low_fraction
-                extraction_mode = "ocr"
-                ocr_used = True
+            try:
+                ocr_blocks = _extract_pdf_blocks_via_ocr(file_bytes)
+            except RuntimeError as exc:
+                extraction_warning = str(exc)
+            else:
+                ocr_quality, ocr_low_fraction = _text_quality_profile(ocr_blocks)
+                if ocr_blocks and (not text_blocks or ocr_quality >= text_quality or ocr_low_fraction < low_fraction):
+                    text_blocks = ocr_blocks
+                    text_quality = ocr_quality
+                    low_fraction = ocr_low_fraction
+                    extraction_mode = "ocr"
+                    ocr_used = True
         blocks = text_blocks
     elif suffix == ".docx":
         blocks, text_quality = _extract_docx_blocks_with_quality(file_bytes)
@@ -517,50 +611,82 @@ def parse_uploaded_document(filename: str, file_bytes: bytes) -> dict[str, Any]:
         ocr_used = False
         ocr_available = False
         _, low_fraction = _text_quality_profile(blocks)
+    elif suffix == ".pptx":
+        blocks = _extract_pptx_blocks(file_bytes)
+        mime_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        extraction_mode = "text"
+        ocr_used = False
+        ocr_available = False
+        text_quality, low_fraction = _text_quality_profile(blocks)
+    elif suffix in TEXT_FILE_SUFFIXES:
+        blocks, mime_type = _extract_text_like_blocks(file_bytes, suffix=suffix)
+        extraction_mode = "text"
+        ocr_used = False
+        ocr_available = False
+        text_quality, low_fraction = _text_quality_profile(blocks)
+    elif suffix == ".ppt":
+        raise ValueError("暂不支持直接解析旧版 .ppt，请先另存为 .pptx 后上传")
     else:
-        raise ValueError("仅支持 PDF 或 .docx 文件")
+        raise ValueError("仅支持 PDF、DOCX、PPTX、Markdown、TXT、LaTeX 文件")
 
     if not blocks:
+        if suffix == ".pdf" and extraction_warning:
+            raise ValueError(f"没有从 PDF 中提取到可用正文文本。{extraction_warning}")
         raise ValueError("没有从文档中提取到可用正文文本，可能以公式或图片为主")
 
     filtered_blocks, skipped_block_count = _filter_formula_blocks(blocks)
     if not filtered_blocks:
+        if suffix == ".pdf" and extraction_warning:
+            raise ValueError(f"没有从 PDF 中提取到可用正文文本。{extraction_warning}")
         raise ValueError("没有从文档中提取到可用正文文本，可能以公式或图片为主")
 
     filtered_quality, filtered_low_fraction = _text_quality_profile(filtered_blocks)
     if filtered_quality < TEXT_QUALITY_THRESHOLD or filtered_low_fraction > 0.35:
         if suffix == ".pdf" and not ocr_used and _ocr_available():
-            ocr_blocks = _extract_pdf_blocks_via_ocr(file_bytes)
-            filtered_blocks, skipped_block_count = _filter_formula_blocks(ocr_blocks)
-            if filtered_blocks:
-                filtered_quality, filtered_low_fraction = _text_quality_profile(filtered_blocks)
-                if filtered_quality >= TEXT_QUALITY_THRESHOLD and filtered_low_fraction <= 0.35:
-                    blocks = ocr_blocks
-                    text_quality = filtered_quality
-                    extraction_mode = "ocr"
-                    ocr_used = True
+            try:
+                ocr_blocks = _extract_pdf_blocks_via_ocr(file_bytes)
+            except RuntimeError as exc:
+                extraction_warning = extraction_warning or str(exc)
+            else:
+                filtered_blocks, skipped_block_count = _filter_formula_blocks(ocr_blocks)
+                if filtered_blocks:
+                    filtered_quality, filtered_low_fraction = _text_quality_profile(filtered_blocks)
+                    if filtered_quality >= TEXT_QUALITY_THRESHOLD and filtered_low_fraction <= 0.35:
+                        blocks = ocr_blocks
+                        text_quality = filtered_quality
+                        extraction_mode = "ocr"
+                        ocr_used = True
+                    else:
+                        raise ValueError("提取质量较差，OCR 兜底后仍不稳定，建议使用更清晰的 PDF")
                 else:
                     raise ValueError("提取质量较差，OCR 兜底后仍不稳定，建议使用更清晰的 PDF")
-            else:
-                raise ValueError("提取质量较差，OCR 兜底后仍不稳定，建议使用更清晰的 PDF")
         else:
-            raise ValueError("提取质量较差，建议使用可复制文本版文档，或改用 OCR 处理扫描件")
+            if suffix == ".pdf" and extraction_warning:
+                extraction_warning = f"{extraction_warning} 当前先使用普通文本提取结果入库，识别质量可能有限。".strip()
+            else:
+                raise ValueError("提取质量较差，建议使用可复制文本版文档，或改用 OCR 处理扫描件")
 
     extracted_text = "\n\n".join(block.text for block in filtered_blocks).strip()
     if text_quality < TEXT_QUALITY_THRESHOLD:
         if suffix == ".pdf":
             if ocr_available and not ocr_used:
-                raise ValueError("提取质量较差，OCR 兜底后仍不稳定，建议使用更清晰的 PDF 或图片版文档")
+                if extraction_warning:
+                    extraction_warning = f"{extraction_warning} OCR 未执行成功，当前保留普通文本提取结果。".strip()
+                else:
+                    raise ValueError("提取质量较差，OCR 兜底后仍不稳定，建议使用更清晰的 PDF 或图片版文档")
             if not ocr_available:
                 raise ValueError("提取质量较差，当前环境未启用 OCR 兜底，建议安装 OCR 依赖或更换文档")
         else:
-            raise ValueError("提取质量较差，建议先导出为可复制文本版 PDF，或重新整理 Word 文档")
+            raise ValueError("提取质量较差，建议检查文档正文是否过少、格式是否过重，或换用更干净的文本版本")
 
     summary = _summarize_text(extracted_text, 240)
     chunks = _build_chunks(filtered_blocks, source_label=Path(filename).name, knowledge_base_id="", knowledge_base_name="")
-    extraction_warning = ""
     if skipped_block_count:
-        extraction_warning = f"已跳过 {skipped_block_count} 个公式块，仅保留正文。"
+        extraction_warning = (
+            f"{extraction_warning} 已跳过 {skipped_block_count} 个公式块，仅保留正文。".strip()
+            if extraction_warning
+            else f"已跳过 {skipped_block_count} 个公式块，仅保留正文。"
+        )
     preview_chunks = [
         {
             "source": chunk["source"],
@@ -1241,6 +1367,19 @@ def confirm_upload_draft(
                 "kind": knowledge_base.get("kind", "custom"),
             },
             "knowledge_bases": list_knowledge_bases(),
+        }
+
+
+def cancel_upload_draft(*, draft_id: str) -> dict[str, Any]:
+    ensure_initialized()
+    with _LOCK:
+        draft = _load_draft(draft_id)
+        if draft.get("confirmed_at"):
+            raise ValueError("draft already confirmed")
+        _delete_draft(draft_id)
+        return {
+            "cancelled": True,
+            "draft_id": draft_id,
         }
 
 

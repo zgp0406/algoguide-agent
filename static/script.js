@@ -23,6 +23,8 @@ const knowledgeDrawer = document.getElementById("knowledge-drawer");
 const knowledgeDrawerTitle = document.getElementById("knowledge-drawer-title");
 const knowledgeDrawerContent = document.getElementById("knowledge-drawer-content");
 const knowledgeDrawerClose = document.getElementById("knowledge-drawer-close");
+const toastRoot = document.getElementById("toast-root");
+const appDialogRoot = document.getElementById("app-dialog-root");
 
 const history = [];
 let readinessMessage = null;
@@ -48,6 +50,165 @@ let connectionState = {
   model: "",
 };
 const NEW_KNOWLEDGE_BASE_VALUE = "__new__";
+
+function toastTitle(type) {
+  const titles = {
+    success: "操作成功",
+    warning: "需要处理",
+    error: "操作失败",
+    info: "提示",
+  };
+  return titles[type] || titles.info;
+}
+
+function showToast(message, type = "info", title = "") {
+  if (!toastRoot) return;
+
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+
+  const heading = document.createElement("strong");
+  heading.textContent = title || toastTitle(type);
+  toast.appendChild(heading);
+
+  const body = document.createElement("span");
+  body.textContent = String(message || "");
+  toast.appendChild(body);
+
+  toastRoot.appendChild(toast);
+  window.setTimeout(() => {
+    toast.remove();
+  }, type === "error" ? 5200 : 3200);
+}
+
+function clearDialog() {
+  if (!appDialogRoot) return;
+  appDialogRoot.innerHTML = "";
+  appDialogRoot.hidden = true;
+}
+
+function openDialog(options = {}) {
+  if (!appDialogRoot) {
+    return Promise.resolve(null);
+  }
+
+  clearDialog();
+  appDialogRoot.hidden = false;
+
+  const dialog = document.createElement("section");
+  dialog.className = "app-dialog";
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+
+  const title = document.createElement("h2");
+  title.textContent = options.title || "确认操作";
+  dialog.appendChild(title);
+
+  if (options.message) {
+    const message = document.createElement("p");
+    message.textContent = options.message;
+    dialog.appendChild(message);
+  }
+
+  let input = null;
+  if (options.input) {
+    input = document.createElement("input");
+    input.type = "text";
+    input.value = options.initialValue || "";
+    input.placeholder = options.placeholder || "";
+    dialog.appendChild(input);
+  }
+
+  const error = document.createElement("div");
+  error.className = "app-dialog-error";
+  dialog.appendChild(error);
+
+  const actions = document.createElement("div");
+  actions.className = "app-dialog-actions";
+
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "app-dialog-cancel";
+  cancelButton.textContent = options.cancelText || "取消";
+  actions.appendChild(cancelButton);
+
+  const confirmButton = document.createElement("button");
+  confirmButton.type = "button";
+  confirmButton.className = `app-dialog-confirm${options.danger ? " danger" : ""}`;
+  confirmButton.textContent = options.confirmText || "确认";
+  actions.appendChild(confirmButton);
+
+  dialog.appendChild(actions);
+  appDialogRoot.appendChild(dialog);
+
+  return new Promise((resolve) => {
+    let resolved = false;
+
+    const finish = (value) => {
+      if (resolved) return;
+      resolved = true;
+      document.removeEventListener("keydown", handleKeydown, true);
+      appDialogRoot.removeEventListener("pointerdown", handleBackdrop);
+      clearDialog();
+      resolve(value);
+    };
+
+    const confirm = () => {
+      if (!input) {
+        finish(true);
+        return;
+      }
+      const value = input.value.trim();
+      if (options.required && !value) {
+        error.textContent = options.requiredMessage || "内容不能为空。";
+        input.focus();
+        return;
+      }
+      finish(value);
+    };
+
+    const handleKeydown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        finish(null);
+      }
+      if (event.key === "Enter" && input && !event.shiftKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        confirm();
+      }
+    };
+
+    const handleBackdrop = (event) => {
+      if (event.target === appDialogRoot) {
+        finish(null);
+      }
+    };
+
+    cancelButton.addEventListener("click", () => finish(null));
+    confirmButton.addEventListener("click", confirm);
+    appDialogRoot.addEventListener("pointerdown", handleBackdrop);
+    document.addEventListener("keydown", handleKeydown, true);
+
+    window.setTimeout(() => {
+      if (input) {
+        input.focus();
+        input.select();
+      } else {
+        confirmButton.focus();
+      }
+    }, 0);
+  });
+}
+
+function promptDialog(options = {}) {
+  return openDialog({ ...options, input: true, confirmText: options.confirmText || "保存" });
+}
+
+function confirmDialog(options = {}) {
+  return openDialog({ ...options, confirmText: options.confirmText || "确认" });
+}
 
 function showWorkspaceView(view) {
   const showKnowledge = view === "knowledge";
@@ -704,7 +865,7 @@ async function refreshKnowledgeState(selectedKbId = "") {
     renderKnowledgeDashboard(knowledgeBases);
     await refreshExpandedKnowledgeDocuments({ force: true });
   } catch (error) {
-    window.alert(`刷新知识库失败：${error}`);
+    showToast(`刷新知识库失败：${error}`, "error");
   }
 }
 
@@ -712,13 +873,16 @@ async function renameKnowledgeDocument(doc) {
   const documentId = String(doc?.id || "");
   if (!documentId) return;
 
-  const nextTitle = window.prompt("请输入新的文档标题", doc.title || doc.filename || "未命名文档");
+  const nextTitle = await promptDialog({
+    title: "重命名文档",
+    message: "为这个文档设置一个更容易识别的标题。",
+    initialValue: doc.title || doc.filename || "未命名文档",
+    placeholder: "文档标题",
+    required: true,
+    requiredMessage: "文档标题不能为空。",
+  });
   if (nextTitle === null) return;
   const title = nextTitle.trim();
-  if (!title) {
-    window.alert("文档标题不能为空。");
-    return;
-  }
 
   try {
     const data = await requestJson(`/api/knowledge-documents/${encodeURIComponent(documentId)}`, {
@@ -737,8 +901,9 @@ async function renameKnowledgeDocument(doc) {
     if (activeKnowledgeDocumentId === documentId) {
       fetchKnowledgeDocumentDetail(documentId, data.document || doc);
     }
+    showToast("文档标题已更新。", "success");
   } catch (error) {
-    window.alert(`重命名文档失败：${error}`);
+    showToast(`重命名文档失败：${error}`, "error");
   }
 }
 
@@ -749,11 +914,11 @@ async function updateKnowledgeDocument(doc, values) {
   const title = String(values?.title || "").trim();
   const text = String(values?.text || "").trim();
   if (!title) {
-    window.alert("文档标题不能为空。");
+    showToast("文档标题不能为空。", "warning");
     return;
   }
   if (!text) {
-    window.alert("文档正文不能为空。");
+    showToast("文档正文不能为空。", "warning");
     return;
   }
 
@@ -773,8 +938,9 @@ async function updateKnowledgeDocument(doc, values) {
       activeKnowledgeDocumentId = String(data.document.id || documentId);
       renderKnowledgeDrawerDocument(data.document);
     }
+    showToast("文档已保存，索引已重建。", "success");
   } catch (error) {
-    window.alert(`保存文档失败：${error}`);
+    showToast(`保存文档失败：${error}`, "error");
   }
 }
 
@@ -783,7 +949,13 @@ async function deleteKnowledgeDocument(doc) {
   if (!documentId) return;
 
   const title = doc.title || doc.filename || "该文档";
-  if (!window.confirm(`确认删除「${title}」吗？删除后会从检索索引中移除。`)) {
+  const confirmed = await confirmDialog({
+    title: "删除文档",
+    message: `确认删除「${title}」吗？删除后会从检索索引中移除。`,
+    confirmText: "删除",
+    danger: true,
+  });
+  if (!confirmed) {
     return;
   }
 
@@ -800,8 +972,9 @@ async function deleteKnowledgeDocument(doc) {
     renderKnowledgeBaseOptions(kbId);
     renderKnowledgeDashboard(knowledgeBases);
     await refreshExpandedKnowledgeDocuments({ force: true });
+    showToast("文档已删除，索引已更新。", "success");
   } catch (error) {
-    window.alert(`删除文档失败：${error}`);
+    showToast(`删除文档失败：${error}`, "error");
   }
 }
 
@@ -809,13 +982,16 @@ async function renameKnowledgeBase(kb) {
   const kbId = String(kb?.id || "");
   if (!kbId) return;
 
-  const nextName = window.prompt("请输入新的知识库名称", kb.name || "未命名知识库");
+  const nextName = await promptDialog({
+    title: "重命名知识库",
+    message: "知识库名称会同步显示在引用和文档列表中。",
+    initialValue: kb.name || "未命名知识库",
+    placeholder: "知识库名称",
+    required: true,
+    requiredMessage: "知识库名称不能为空。",
+  });
   if (nextName === null) return;
   const name = nextName.trim();
-  if (!name) {
-    window.alert("知识库名称不能为空。");
-    return;
-  }
 
   try {
     const data = await requestJson(`/api/knowledge-bases/${encodeURIComponent(kbId)}`, {
@@ -831,8 +1007,9 @@ async function renameKnowledgeBase(kb) {
       const documents = await loadKnowledgeBaseDocuments(kbId, { force: true });
       renderKnowledgeBaseDocuments(kbId, documents, false);
     }
+    showToast("知识库名称已更新。", "success");
   } catch (error) {
-    window.alert(`重命名知识库失败：${error}`);
+    showToast(`重命名知识库失败：${error}`, "error");
   }
 }
 
@@ -842,7 +1019,13 @@ async function deleteKnowledgeBase(kb) {
 
   const name = kb.name || "该知识库";
   const count = Number(kb.document_count || 0);
-  if (!window.confirm(`确认删除「${name}」吗？其中 ${count} 个文档会一并从索引中移除。`)) {
+  const confirmed = await confirmDialog({
+    title: "删除知识库",
+    message: `确认删除「${name}」吗？其中 ${count} 个文档会一并从索引中移除。`,
+    confirmText: "删除",
+    danger: true,
+  });
+  if (!confirmed) {
     return;
   }
 
@@ -856,8 +1039,9 @@ async function deleteKnowledgeBase(kb) {
     renderKnowledgeBaseOptions(String(data.default_knowledge_base_id || knowledgeBases[0]?.id || ""));
     renderKnowledgeDashboard(knowledgeBases);
     closeKnowledgeDrawer();
+    showToast("知识库已删除。", "success");
   } catch (error) {
-    window.alert(`删除知识库失败：${error}`);
+    showToast(`删除知识库失败：${error}`, "error");
   }
 }
 
@@ -1160,8 +1344,11 @@ function renderKnowledgeBaseOptions(selectedId = "") {
   syncKnowledgeBaseNameVisibility();
 }
 
-function setKnowledgePreviewEmpty(message = "上传 PDF 或 Word 文档后，会在这里看到摘要和切块预览。") {
+function setKnowledgePreviewEmpty(message = "上传 PDF、Word、PPTX、Markdown 或 LaTeX 文档后，会在这里看到摘要和切块预览。") {
   pendingKnowledgeDraft = null;
+  if (knowledgeFileInput) {
+    knowledgeFileInput.value = "";
+  }
   if (!knowledgePreview) return;
   knowledgePreview.innerHTML = "";
   knowledgePreview.classList.add("knowledge-preview-empty");
@@ -1262,6 +1449,13 @@ function renderKnowledgePreview(draft) {
   confirmButton.addEventListener("click", confirmKnowledgeDraft);
   footer.appendChild(confirmButton);
 
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "knowledge-cancel-button";
+  cancelButton.textContent = "取消上传";
+  cancelButton.addEventListener("click", cancelKnowledgeDraft);
+  footer.appendChild(cancelButton);
+
   const tip = document.createElement("span");
   tip.className = "knowledge-preview-tip";
   tip.textContent = "确认后会重建索引并立即可检索。";
@@ -1293,14 +1487,14 @@ async function loadKnowledgeBases() {
 
 async function uploadKnowledgeDocument() {
   if (!knowledgeFileInput || !knowledgeFileInput.files?.length) {
-    window.alert("先选择一个 PDF 或 Word 文件。");
+    showToast("先选择一个 PDF、Word、PPTX、Markdown 或 LaTeX 文件。", "warning");
     return;
   }
 
   const file = knowledgeFileInput.files[0];
   const target = getSelectedKnowledgeBase();
   if (target.kind === "new" && !target.name) {
-    window.alert("请先输入新知识库名称。");
+    showToast("请先输入新知识库名称。", "warning");
     return;
   }
 
@@ -1339,8 +1533,10 @@ async function uploadKnowledgeDocument() {
       }
     }
     renderKnowledgePreview(data.draft);
+    showToast("文档解析完成，请确认入库。", "success");
   } catch (error) {
     setKnowledgePreviewEmpty(`上传解析失败：${error}`);
+    showToast(`上传解析失败：${error}`, "error");
   } finally {
     if (knowledgeUploadButton) knowledgeUploadButton.disabled = false;
   }
@@ -1348,13 +1544,13 @@ async function uploadKnowledgeDocument() {
 
 async function confirmKnowledgeDraft() {
   if (!pendingKnowledgeDraft?.draft_id) {
-    window.alert("请先上传文档并完成预览。");
+    showToast("请先上传文档并完成预览。", "warning");
     return;
   }
 
   const target = getSelectedKnowledgeBase();
   if (target.kind === "new" && !target.name) {
-    window.alert("请先输入新知识库名称。");
+    showToast("请先输入新知识库名称。", "warning");
     return;
   }
 
@@ -1404,8 +1600,33 @@ async function confirmKnowledgeDraft() {
       knowledgePreview.classList.remove("knowledge-preview-empty");
       knowledgePreview.appendChild(resultMessage);
     }
+    showToast("文档已入库，索引已更新。", "success");
   } catch (error) {
     setKnowledgePreviewEmpty(`确认入库失败：${error}`);
+    showToast(`确认入库失败：${error}`, "error");
+  }
+}
+
+async function cancelKnowledgeDraft() {
+  const draftId = String(pendingKnowledgeDraft?.draft_id || "");
+  if (!draftId) {
+    setKnowledgePreviewEmpty();
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/knowledge/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ draft_id: draftId }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.detail || `HTTP ${response.status}`);
+    }
+    setKnowledgePreviewEmpty("已取消本次上传，你可以重新选择文档。");
+  } catch (error) {
+    showToast(`取消上传失败：${error}`, "error");
   }
 }
 
@@ -1462,7 +1683,12 @@ function showSessionContextMenu(session, x, y) {
 }
 
 async function deleteSession(sessionId) {
-  const ok = window.confirm("确定删除这个会话吗？删除后无法恢复。");
+  const ok = await confirmDialog({
+    title: "删除会话",
+    message: "确定删除这个会话吗？删除后无法恢复。",
+    confirmText: "删除",
+    danger: true,
+  });
   if (!ok) return;
 
   try {
@@ -1489,8 +1715,9 @@ async function deleteSession(sessionId) {
     } else {
       renderRecentChats(recentSessions);
     }
+    showToast("会话已删除。", "success");
   } catch (error) {
-    window.alert(`删除会话失败：${error}`);
+    showToast(`删除会话失败：${error}`, "error");
   }
 }
 
@@ -1572,14 +1799,17 @@ function renderRecentChats(sessions) {
 }
 
 async function renameSession(sessionId, currentTitle) {
-  const nextTitle = window.prompt("请输入新的会话标题", currentTitle || "新对话");
+  const nextTitle = await promptDialog({
+    title: "重命名会话",
+    message: "给这次对话取一个更方便回看的标题。",
+    initialValue: currentTitle || "新对话",
+    placeholder: "会话标题",
+    required: true,
+    requiredMessage: "标题不能为空。",
+  });
   if (nextTitle === null) return;
 
   const title = nextTitle.trim();
-  if (!title) {
-    window.alert("标题不能为空。");
-    return;
-  }
 
   try {
     const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/title`, {
@@ -1607,8 +1837,9 @@ async function renameSession(sessionId, currentTitle) {
       ].slice(0, 10);
       renderRecentChats(recentSessions);
     }
+    showToast("会话标题已更新。", "success");
   } catch (error) {
-    window.alert(`修改标题失败：${error}`);
+    showToast(`修改标题失败：${error}`, "error");
   }
 }
 

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,8 +13,9 @@ from agent.chain import ChatRequest, chat, get_api_status, get_session_detail, l
 from agent.sessions import delete_session, update_session_title
 from knowledge.library import (
     BUILTIN_KB_ID,
-    create_upload_draft,
+    cancel_upload_draft,
     confirm_upload_draft,
+    create_upload_draft,
     delete_document,
     delete_knowledge_base,
     get_document_detail,
@@ -26,6 +28,8 @@ from knowledge.library import (
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
+DEFAULT_UPLOAD_MAX_BYTES = 50 * 1024 * 1024
+MULTIPART_OVERHEAD_ALLOWANCE_BYTES = 1024 * 1024
 
 
 app = FastAPI(title="AlgoGuide Agent", version="0.1.0")
@@ -41,6 +45,10 @@ class KnowledgeConfirmRequest(BaseModel):
     knowledge_base_name: str | None = Field(default=None, max_length=80)
 
 
+class KnowledgeDraftCancelRequest(BaseModel):
+    draft_id: str = Field(min_length=1)
+
+
 class KnowledgeBaseUpdateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=80)
 
@@ -48,6 +56,36 @@ class KnowledgeBaseUpdateRequest(BaseModel):
 class KnowledgeDocumentUpdateRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=120)
     text: str | None = Field(default=None, min_length=1)
+
+
+def _upload_max_bytes() -> int:
+    raw_value = os.getenv("UPLOAD_MAX_BYTES", "").strip()
+    if not raw_value:
+        return DEFAULT_UPLOAD_MAX_BYTES
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return DEFAULT_UPLOAD_MAX_BYTES
+    return value if value > 0 else DEFAULT_UPLOAD_MAX_BYTES
+
+
+def _format_size(bytes_count: int) -> str:
+    if bytes_count >= 1024 * 1024:
+        return f"{bytes_count / 1024 / 1024:.0f}MB"
+    if bytes_count >= 1024:
+        return f"{bytes_count / 1024:.0f}KB"
+    return f"{bytes_count}B"
+
+
+def _reject_oversized_upload(bytes_count: int, *, multipart_body: bool = False) -> None:
+    max_bytes = _upload_max_bytes()
+    allowance = MULTIPART_OVERHEAD_ALLOWANCE_BYTES if multipart_body else 0
+    if bytes_count <= max_bytes + allowance:
+        return
+    raise HTTPException(
+        status_code=413,
+        detail=f"文件过大，当前上传限制为 {_format_size(max_bytes)}。请压缩文件或拆分后再上传。",
+    )
 
 
 app.add_middleware(
@@ -167,14 +205,21 @@ def knowledge_document_delete_api(document_id: str) -> dict[str, object]:
 
 @app.post("/api/knowledge/upload")
 async def knowledge_upload_api(
+    request: Request,
     file: UploadFile = File(...),
     knowledge_base_id: str | None = Form(default=None),
     knowledge_base_name: str | None = Form(default=None),
 ) -> dict[str, object]:
     try:
+        content_length = request.headers.get("content-length")
+        if content_length and content_length.isdigit():
+            _reject_oversized_upload(int(content_length), multipart_body=True)
+
         file_bytes = await file.read()
         if not file_bytes:
             raise HTTPException(status_code=400, detail="文件为空")
+        _reject_oversized_upload(len(file_bytes))
+
         draft = create_upload_draft(
             file_name=file.filename or "upload",
             file_bytes=file_bytes,
@@ -200,6 +245,14 @@ def knowledge_confirm_api(request: KnowledgeConfirmRequest) -> dict[str, object]
             knowledge_base_name=request.knowledge_base_name,
         )
         return result
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/knowledge/cancel")
+def knowledge_cancel_api(request: KnowledgeDraftCancelRequest) -> dict[str, object]:
+    try:
+        return cancel_upload_draft(draft_id=request.draft_id)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
