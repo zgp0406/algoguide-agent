@@ -345,6 +345,28 @@ class KnowledgeManagementTests(unittest.TestCase):
         self.assertTrue(result["cancelled"])
         self.assertFalse(draft_path.exists())
 
+    def test_cancel_upload_draft_tombstones_when_file_delete_is_denied(self) -> None:
+        draft_id = "draft_cancel_denied"
+        draft = {
+            "draft_id": draft_id,
+            "file_name": "cancel.docx",
+            "confirmed_at": None,
+        }
+        library.DRAFTS_DIR.mkdir(parents=True, exist_ok=True)
+        draft_path = library.DRAFTS_DIR / f"{draft_id}.json"
+        draft_path.write_text(json.dumps(draft, ensure_ascii=False), encoding="utf-8")
+
+        with mock.patch("pathlib.Path.unlink", side_effect=PermissionError("denied")):
+            result = library.cancel_upload_draft(draft_id=draft_id)
+
+        self.assertTrue(result["cancelled"])
+        self.assertTrue(draft_path.exists())
+        tombstone = json.loads(draft_path.read_text(encoding="utf-8"))
+        self.assertEqual(tombstone["draft_id"], draft_id)
+        self.assertIn("deleted_at", tombstone)
+        with self.assertRaises(FileNotFoundError):
+            library._load_draft(draft_id)
+
     def test_builtin_knowledge_base_cannot_be_deleted(self) -> None:
         with self.assertRaises(ValueError):
             library.delete_knowledge_base(library.BUILTIN_KB_ID)

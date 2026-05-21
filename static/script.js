@@ -1614,6 +1614,9 @@ async function cancelKnowledgeDraft() {
     return;
   }
 
+  setKnowledgePreviewEmpty("已取消本次上传，你可以重新选择文档。");
+  showToast("已取消本次上传。", "success");
+
   try {
     const response = await fetch("/api/knowledge/cancel", {
       method: "POST",
@@ -1624,9 +1627,8 @@ async function cancelKnowledgeDraft() {
     if (!response.ok) {
       throw new Error(data.detail || `HTTP ${response.status}`);
     }
-    setKnowledgePreviewEmpty("已取消本次上传，你可以重新选择文档。");
   } catch (error) {
-    showToast(`取消上传失败：${error}`, "error");
+    console.warn("Failed to delete upload draft:", error);
   }
 }
 

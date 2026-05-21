@@ -781,13 +781,24 @@ def _load_draft(draft_id: str) -> dict[str, Any]:
     draft = _read_json(_load_draft_path(draft_id), {})
     if not isinstance(draft, dict) or not draft:
         raise FileNotFoundError("draft not found")
+    if draft.get("deleted_at") or draft.get("cancelled_at"):
+        raise FileNotFoundError("draft not found")
     return draft
 
 
 def _delete_draft(draft_id: str) -> None:
     path = _load_draft_path(draft_id)
     if path.exists():
-        path.unlink()
+        try:
+            path.unlink()
+        except PermissionError:
+            _write_json(
+                path,
+                {
+                    "draft_id": draft_id,
+                    "deleted_at": _now(),
+                },
+            )
 
 
 def _document_to_index_chunk(document: dict[str, Any], chunk: dict[str, Any]) -> dict[str, Any]:
