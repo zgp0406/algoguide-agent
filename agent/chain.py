@@ -32,6 +32,9 @@ class ChatResponse(BaseModel):
     evidence: list[dict[str, object]] = Field(default_factory=list)
     used_rag: bool = False
     knowledge_base: str | None = None
+    rag_confidence: float = 0.0
+    retrieval_mode: str = "none"
+    low_confidence_reason: str | None = None
     error: str | None = None
     error_type: str | None = None
     error_message: str | None = None
@@ -52,6 +55,8 @@ _API_STATUS_TTL_SECONDS = 60.0
 _API_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "60"))
 _MAX_RECENT_HISTORY_MESSAGES = 8
 _DEFAULT_KNOWLEDGE_BASE_NAME = "全库检索"
+_SEMANTIC_RAG_THRESHOLD = float(os.getenv("RAG_SEMANTIC_THRESHOLD", "0.32"))
+_LEXICAL_RAG_THRESHOLD = float(os.getenv("RAG_LEXICAL_THRESHOLD", "2"))
 
 
 def _api_config() -> tuple[str, str, str]:
@@ -211,6 +216,7 @@ def _format_evidence_items(chunks: list[object]) -> list[dict[str, object]]:
         text = str(getattr(chunk, "text", "") or "").strip()
         location = str(getattr(chunk, "location", "") or "").strip()
         score = getattr(chunk, "score", None)
+        retrieval_mode = str(getattr(chunk, "retrieval_mode", "") or "").strip()
         if not source or not text:
             continue
         item: dict[str, object] = {
@@ -226,8 +232,46 @@ def _format_evidence_items(chunks: list[object]) -> list[dict[str, object]]:
                 item["score"] = float(score)
             except Exception:
                 pass
+        if retrieval_mode:
+            item["retrieval_mode"] = retrieval_mode
         evidence.append(item)
     return evidence
+
+
+def _retrieval_mode(chunks: list[object]) -> str:
+    for chunk in chunks:
+        mode = str(getattr(chunk, "retrieval_mode", "") or "").strip()
+        if mode:
+            return mode
+    return "none"
+
+
+def _rag_confidence(chunks: list[object]) -> tuple[float, str, str | None]:
+    if not chunks:
+        return 0.0, "none", "知识库没有返回候选片段"
+
+    mode = _retrieval_mode(chunks)
+    scores: list[float] = []
+    for chunk in chunks:
+        try:
+            scores.append(float(getattr(chunk, "score", 0.0)))
+        except Exception:
+            pass
+    top_score = max(scores) if scores else 0.0
+
+    if mode == "semantic":
+        confidence = max(0.0, min(1.0, top_score))
+        if top_score < _SEMANTIC_RAG_THRESHOLD:
+            return confidence, mode, f"语义相关度 {confidence:.2f} 低于阈值 {_SEMANTIC_RAG_THRESHOLD:.2f}"
+        return confidence, mode, None
+
+    if mode == "lexical":
+        confidence = max(0.0, min(1.0, top_score / max(_LEXICAL_RAG_THRESHOLD * 2, 1.0)))
+        if top_score < _LEXICAL_RAG_THRESHOLD:
+            return confidence, mode, f"关键词命中分数 {top_score:.0f} 低于阈值 {_LEXICAL_RAG_THRESHOLD:.0f}"
+        return confidence, mode, None
+
+    return 0.0, mode or "none", "无法判断检索模式，未使用知识库片段"
 
 
 def _build_model_messages(
@@ -410,23 +454,28 @@ def get_api_status(force_refresh: bool = False) -> ApiStatusResponse:
     return result
 
 
-def build_context(message: str) -> tuple[str, list[str], list[dict[str, object]], bool, str]:
+def build_context(message: str) -> tuple[str, list[str], list[dict[str, object]], bool, str, float, str, str | None]:
     started_at = monotonic()
     chunks = retrieve_with_scores(message)
+    rag_confidence, retrieval_mode, low_confidence_reason = _rag_confidence(chunks)
+    usable_chunks = chunks if low_confidence_reason is None else []
     elapsed_ms = round((monotonic() - started_at) * 1000, 2)
     log_event(
         "retrieval.completed",
         query_length=len(message),
         chunk_count=len(chunks),
-        used_rag=bool(chunks),
+        used_rag=bool(usable_chunks),
+        rag_confidence=round(rag_confidence, 4),
+        retrieval_mode=retrieval_mode,
+        low_confidence=bool(low_confidence_reason),
         elapsed_ms=elapsed_ms,
     )
-    if not chunks:
-        return message, [], [], False, _knowledge_base_name()
+    if not usable_chunks:
+        return message, [], [], False, _knowledge_base_name(), rag_confidence, retrieval_mode, low_confidence_reason
 
     context_lines = []
     sources = []
-    for index, chunk in enumerate(chunks, start=1):
+    for index, chunk in enumerate(usable_chunks, start=1):
         location_text = f" | 位置：{chunk.location}" if getattr(chunk, "location", "") else ""
         context_lines.append(
             f"{index}. 知识库：{chunk.knowledge_base_name or _knowledge_base_name()} | 来源：{chunk.source}{location_text}\n"
@@ -441,7 +490,16 @@ def build_context(message: str) -> tuple[str, list[str], list[dict[str, object]]
         f"User question: {message}\n"
         "请优先基于以上证据回答，并在答案里自然提及关键来源。"
     )
-    return prompt, _unique_strings(sources), _format_evidence_items(chunks), True, _knowledge_base_name()
+    return (
+        prompt,
+        _unique_strings(sources),
+        _format_evidence_items(usable_chunks),
+        True,
+        _knowledge_base_name(),
+        rag_confidence,
+        retrieval_mode,
+        None,
+    )
 
 
 def local_answer(
@@ -491,6 +549,9 @@ def _build_meta_payload(
     evidence: list[dict[str, object]],
     used_rag: bool,
     knowledge_base: str,
+    rag_confidence: float,
+    retrieval_mode: str,
+    low_confidence_reason: str | None,
     ready: bool,
     session_id: str,
     error: str | None = None,
@@ -503,6 +564,9 @@ def _build_meta_payload(
         "evidence": evidence,
         "used_rag": used_rag,
         "knowledge_base": knowledge_base,
+        "rag_confidence": rag_confidence,
+        "retrieval_mode": retrieval_mode,
+        "low_confidence_reason": low_confidence_reason,
         "ready": ready,
         "session_id": session_id,
         "error": error,
@@ -514,7 +578,16 @@ def _build_meta_payload(
 
 def chat(request: ChatRequest) -> ChatResponse:
     started_at = monotonic()
-    prompt, sources, evidence, used_rag, knowledge_base = build_context(request.message)
+    (
+        prompt,
+        sources,
+        evidence,
+        used_rag,
+        knowledge_base,
+        rag_confidence,
+        retrieval_mode,
+        low_confidence_reason,
+    ) = build_context(request.message)
     session_id = request.session_id
     existing_session = get_session(session_id) if session_id else None
     session_summary = str(existing_session.get("summary") or "") if existing_session else ""
@@ -555,6 +628,9 @@ def chat(request: ChatRequest) -> ChatResponse:
                 evidence=evidence,
                 used_rag=used_rag,
                 knowledge_base=knowledge_base,
+                rag_confidence=rag_confidence,
+                retrieval_mode=retrieval_mode,
+                low_confidence_reason=low_confidence_reason,
                 error=error,
                 error_type=error_type,
                 error_message=error_message,
@@ -594,6 +670,9 @@ def chat(request: ChatRequest) -> ChatResponse:
                 evidence=evidence,
                 used_rag=used_rag,
                 knowledge_base=knowledge_base,
+                rag_confidence=rag_confidence,
+                retrieval_mode=retrieval_mode,
+                low_confidence_reason=low_confidence_reason,
                 error=error,
                 error_type=error_type,
                 error_message=error_message,
@@ -630,6 +709,9 @@ def chat(request: ChatRequest) -> ChatResponse:
         evidence=evidence,
         used_rag=used_rag,
         knowledge_base=knowledge_base,
+        rag_confidence=rag_confidence,
+        retrieval_mode=retrieval_mode,
+        low_confidence_reason=low_confidence_reason,
         error=error,
         error_type=error_type,
         error_message=error_message,
@@ -640,7 +722,16 @@ def chat(request: ChatRequest) -> ChatResponse:
 
 def stream_chat(request: ChatRequest) -> Iterator[bytes]:
     started_at = monotonic()
-    prompt, sources, evidence, used_rag, knowledge_base = build_context(request.message)
+    (
+        prompt,
+        sources,
+        evidence,
+        used_rag,
+        knowledge_base,
+        rag_confidence,
+        retrieval_mode,
+        low_confidence_reason,
+    ) = build_context(request.message)
     existing_session = get_session(request.session_id) if request.session_id else None
     session_summary = str(existing_session.get("summary") or "") if existing_session else ""
     session_id, storage_error = _save_user_message(
@@ -663,6 +754,9 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
                 evidence=evidence,
                 used_rag=used_rag,
                 knowledge_base=knowledge_base,
+                rag_confidence=rag_confidence,
+                retrieval_mode=retrieval_mode,
+                low_confidence_reason=low_confidence_reason,
                 ready=False,
                 session_id=session_id,
                 error=meta_error,
@@ -701,6 +795,9 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
                     evidence=evidence,
                     used_rag=used_rag,
                     knowledge_base=knowledge_base,
+                    rag_confidence=rag_confidence,
+                    retrieval_mode=retrieval_mode,
+                    low_confidence_reason=low_confidence_reason,
                     ready=False,
                     session_id=saved_session_id,
                     error=meta_error,
@@ -723,6 +820,9 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
                 evidence=evidence,
                 used_rag=used_rag,
                 knowledge_base=knowledge_base,
+                rag_confidence=rag_confidence,
+                retrieval_mode=retrieval_mode,
+                low_confidence_reason=low_confidence_reason,
                 ready=True,
                 session_id=session_id,
                 error=meta_error,
@@ -767,6 +867,9 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
                     evidence=evidence,
                     used_rag=used_rag,
                     knowledge_base=knowledge_base,
+                    rag_confidence=rag_confidence,
+                    retrieval_mode=retrieval_mode,
+                    low_confidence_reason=low_confidence_reason,
                     ready=True,
                     session_id=saved_session_id,
                     error=meta_error,
@@ -813,6 +916,9 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
                 evidence=evidence,
                 used_rag=used_rag,
                 knowledge_base=knowledge_base,
+                rag_confidence=rag_confidence,
+                retrieval_mode=retrieval_mode,
+                low_confidence_reason=low_confidence_reason,
                 ready=False,
                 session_id=saved_session_id,
                 error=error_text,
@@ -832,6 +938,9 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
                     evidence=evidence,
                     used_rag=used_rag,
                     knowledge_base=knowledge_base,
+                    rag_confidence=rag_confidence,
+                    retrieval_mode=retrieval_mode,
+                    low_confidence_reason=low_confidence_reason,
                     ready=False,
                     session_id=saved_session_id,
                     error=error_text,

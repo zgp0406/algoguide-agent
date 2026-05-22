@@ -190,11 +190,18 @@ def _normalize_ocr_text(text: str) -> list[TextBlock]:
 def _ocr_available() -> bool:
     try:
         import fitz  # noqa: F401
-        import pytesseract  # noqa: F401
+        import pytesseract
         from PIL import Image  # noqa: F401
     except Exception:
         return False
+    _configure_tesseract(pytesseract)
     return True
+
+
+def _configure_tesseract(pytesseract_module: Any) -> None:
+    tesseract_cmd = os.getenv("TESSERACT_CMD", "").strip()
+    if tesseract_cmd:
+        pytesseract_module.pytesseract.tesseract_cmd = tesseract_cmd
 
 
 def _extract_pdf_blocks_via_ocr(file_bytes: bytes) -> list[TextBlock]:
@@ -206,6 +213,7 @@ def _extract_pdf_blocks_via_ocr(file_bytes: bytes) -> list[TextBlock]:
         raise RuntimeError(
             "当前 PDF 文档提取质量较差，需要 OCR 兜底，但缺少 OCR 依赖。请安装 pytesseract、pymupdf 和 pillow。"
         ) from exc
+    _configure_tesseract(pytesseract)
 
     try:
         document = fitz.open(stream=file_bytes, filetype="pdf")

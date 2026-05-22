@@ -3,6 +3,9 @@ const form = document.getElementById("chat-form");
 const input = document.getElementById("input");
 const newChatButton = document.getElementById("new-chat");
 const promptButtons = document.querySelectorAll("[data-prompt]");
+const learningTopic = document.getElementById("learning-topic");
+const learningPoint = document.getElementById("learning-point");
+const learningNextStep = document.getElementById("learning-next-step");
 const chatBadgeText = document.getElementById("chat-badge-text");
 const statusDot = document.querySelector(".status-dot");
 const recentChatsList = document.getElementById("recent-chats");
@@ -25,6 +28,9 @@ const knowledgeDrawerContent = document.getElementById("knowledge-drawer-content
 const knowledgeDrawerClose = document.getElementById("knowledge-drawer-close");
 const toastRoot = document.getElementById("toast-root");
 const appDialogRoot = document.getElementById("app-dialog-root");
+const sourcePanel = document.getElementById("source-panel");
+const sourcePanelList = document.getElementById("source-panel-list");
+const sourcePanelCount = document.getElementById("source-panel-count");
 
 const history = [];
 let readinessMessage = null;
@@ -44,12 +50,173 @@ let isSubmitting = false;
 // 这个状态专门显示“发送中 / 生成中”，和 API 就绪状态分开管理。
 let chatPhaseText = "";
 let knowledgeUploadPhaseText = "";
+let currentHighlightTerms = [];
 let connectionState = {
   ready: false,
   text: "正在检查 API 连接...",
   model: "",
 };
 const NEW_KNOWLEDGE_BASE_VALUE = "__new__";
+
+function uniqueStrings(items = []) {
+  const result = [];
+  const seen = new Set();
+  items.forEach((item) => {
+    const value = String(item || "").trim();
+    if (!value || seen.has(value)) return;
+    seen.add(value);
+    result.push(value);
+  });
+  return result;
+}
+
+function compactDisplayText(text = "", limit = 34) {
+  const value = String(text || "").replace(/\s+/g, " ").trim();
+  if (!value) return "";
+  if (value.length <= limit) return value;
+  return `${value.slice(0, limit - 1)}…`;
+}
+
+function inferLearningTopic(text = "") {
+  const value = String(text || "").toLowerCase();
+  const topics = [
+    ["动态规划", ["动态规划", "dp", "状态转移", "最优子结构"]],
+    ["BFS / DFS", ["bfs", "dfs", "广度优先", "深度优先", "图搜索"]],
+    ["前缀和", ["前缀和", "区间和", "prefix"]],
+    ["二分查找", ["二分", "binary search"]],
+    ["贪心算法", ["贪心", "greedy"]],
+    ["回溯搜索", ["回溯", "backtracking"]],
+    ["最短路", ["最短路", "dijkstra", "bellman", "floyd"]],
+    ["并查集", ["并查集", "union find"]],
+    ["栈与队列", ["栈", "队列", "stack", "queue"]],
+    ["树和递归", ["二叉树", "递归", "tree"]],
+    ["排序算法", ["排序", "sort", "快排", "归并"]],
+    ["复杂度分析", ["复杂度", "时间复杂度", "空间复杂度"]],
+  ];
+
+  const matched = topics.find(([, keywords]) => keywords.some((keyword) => value.includes(keyword)));
+  return matched ? matched[0] : "";
+}
+
+function nextStepForTopic(topic = "") {
+  if (topic.includes("动态规划")) return "确认状态定义、转移方程和边界条件";
+  if (topic.includes("BFS") || topic.includes("DFS")) return "用一个小图手动走一遍遍历过程";
+  if (topic.includes("前缀和")) return "尝试把区间查询改成一次预处理";
+  if (topic.includes("二分")) return "明确单调条件和左右边界更新";
+  if (topic.includes("贪心")) return "补一个交换论证或反例检查";
+  if (topic.includes("回溯")) return "画出选择树并确认剪枝条件";
+  if (topic.includes("最短路")) return "区分边权场景再选算法";
+  if (topic.includes("并查集")) return "练习路径压缩和按秩合并";
+  if (topic.includes("复杂度")) return "把循环层数和数据规模对应起来";
+  return "继续追问一个例子或让它给练习题";
+}
+
+function inferLearningProgress(session = {}, messagesData = []) {
+  const messagesList = Array.isArray(messagesData) ? messagesData : [];
+  const userMessages = messagesList.filter((message) => message?.role === "user");
+  const assistantMessages = messagesList.filter((message) => message?.role === "assistant");
+  const latestUser = userMessages[userMessages.length - 1]?.content || "";
+  const latestAssistant = assistantMessages[assistantMessages.length - 1]?.content || "";
+  const summary = String(session?.summary || "");
+  const title = String(session?.title || "");
+  const topic = inferLearningTopic(`${latestUser} ${summary} ${title} ${latestAssistant}`) || compactDisplayText(title, 18) || "暂未开始";
+  const recentPoint =
+    compactDisplayText(latestUser, 38) ||
+    compactDisplayText(summary, 38) ||
+    "发起一次算法提问后自动更新";
+
+  return {
+    topic,
+    point: recentPoint,
+    nextStep: topic === "暂未开始" ? "选择一个知识点继续追问" : nextStepForTopic(topic),
+  };
+}
+
+function renderLearningProgress(progress = {}) {
+  if (learningTopic) {
+    learningTopic.textContent = progress.topic || "暂未开始";
+  }
+  if (learningPoint) {
+    learningPoint.textContent = progress.point || "发起一次算法提问后自动更新";
+  }
+  if (learningNextStep) {
+    learningNextStep.textContent = progress.nextStep || "选择一个知识点继续追问";
+  }
+}
+
+function currentSessionSummary() {
+  if (!currentSessionId) return null;
+  return recentSessions.find((session) => session.id === currentSessionId) || null;
+}
+
+function updateLearningProgress(session = currentSessionSummary(), messagesData = []) {
+  renderLearningProgress(inferLearningProgress(session || {}, messagesData));
+}
+
+function setHighlightTerms(text = "") {
+  const normalized = String(text || "").trim();
+  const terms = [];
+  const latinTerms = normalized.match(/[A-Za-z0-9_]{2,}/g) || [];
+  terms.push(...latinTerms);
+
+  const cjkRuns = normalized.match(/[\u4e00-\u9fff]{2,}/g) || [];
+  cjkRuns.forEach((run) => {
+    if (run.length <= 8) {
+      terms.push(run);
+    }
+    for (let index = 0; index < run.length - 1; index += 1) {
+      terms.push(run.slice(index, index + 2));
+    }
+  });
+
+  currentHighlightTerms = uniqueStrings(terms)
+    .filter((term) => term.length >= 2)
+    .sort((a, b) => b.length - a.length)
+    .slice(0, 24);
+}
+
+function highlightTextInto(element, text, terms = currentHighlightTerms) {
+  if (!element) return;
+  const value = String(text || "");
+  element.textContent = "";
+  const matches = [];
+
+  terms.forEach((term) => {
+    let start = value.indexOf(term);
+    while (start !== -1) {
+      matches.push({ start, end: start + term.length });
+      start = value.indexOf(term, start + term.length);
+    }
+  });
+
+  matches.sort((a, b) => a.start - b.start || b.end - a.end);
+  const ranges = [];
+  matches.forEach((match) => {
+    const last = ranges[ranges.length - 1];
+    if (last && match.start < last.end) return;
+    ranges.push(match);
+  });
+
+  if (!ranges.length) {
+    element.textContent = value;
+    return;
+  }
+
+  let cursor = 0;
+  ranges.forEach((range) => {
+    if (range.start > cursor) {
+      element.appendChild(document.createTextNode(value.slice(cursor, range.start)));
+    }
+    const mark = document.createElement("mark");
+    mark.className = "hit-highlight";
+    mark.textContent = value.slice(range.start, range.end);
+    element.appendChild(mark);
+    cursor = range.end;
+  });
+  if (cursor < value.length) {
+    element.appendChild(document.createTextNode(value.slice(cursor)));
+  }
+}
 
 function toastTitle(type) {
   const titles = {
@@ -215,6 +382,9 @@ function showWorkspaceView(view) {
   if (chatView) {
     chatView.hidden = showKnowledge;
   }
+  if (sourcePanel) {
+    sourcePanel.hidden = showKnowledge;
+  }
   if (knowledgeManagerView) {
     knowledgeManagerView.hidden = !showKnowledge;
   }
@@ -232,7 +402,23 @@ function scrollToBottom() {
   messages.scrollTop = messages.scrollHeight;
 }
 
-function createMeta(sourceList = [], usedRag = false, knowledgeBase = "") {
+function retrievalModeLabel(mode = "") {
+  const labels = {
+    semantic: "语义检索",
+    lexical: "关键词检索",
+    none: "未检索",
+  };
+  return labels[mode] || mode || "检索";
+}
+
+function createMeta(
+  sourceList = [],
+  usedRag = false,
+  knowledgeBase = "",
+  ragConfidence = 0,
+  retrievalMode = "none",
+  lowConfidenceReason = ""
+) {
   const meta = document.createElement("div");
   meta.className = "message-meta";
 
@@ -246,11 +432,13 @@ function createMeta(sourceList = [], usedRag = false, knowledgeBase = "") {
 
       const rag = document.createElement("span");
       rag.className = "meta-pill";
-      rag.textContent = "RAG 已启用";
+      const confidence = Number(ragConfidence);
+      const confidenceText = Number.isFinite(confidence) && confidence > 0 ? ` · ${Math.round(confidence * 100)}%` : "";
+      rag.textContent = `已使用知识库 · ${retrievalModeLabel(retrievalMode)}${confidenceText}`;
       meta.appendChild(rag);
     } else {
-      kb.textContent = `知识库：${knowledgeBase} · 模型推理`;
-      kb.title = "知识库已启用，未找到直接相关内容。本次回答主要基于模型推理。";
+      kb.textContent = `知识库依据不足 · ${retrievalModeLabel(retrievalMode)}`;
+      kb.title = lowConfidenceReason || "知识库已启用，未找到高置信相关内容。本次回答主要基于模型推理。";
       meta.appendChild(kb);
     }
   }
@@ -263,6 +451,192 @@ function createMeta(sourceList = [], usedRag = false, knowledgeBase = "") {
   }
 
   return meta;
+}
+
+function appendInlineMarkdown(parent, text = "") {
+  const value = String(text || "");
+  const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\$[^$\n]+\$)/g;
+  let cursor = 0;
+  let match = pattern.exec(value);
+  while (match) {
+    if (match.index > cursor) {
+      parent.appendChild(document.createTextNode(value.slice(cursor, match.index)));
+    }
+    const token = match[0];
+    if (token.startsWith("`")) {
+      const code = document.createElement("code");
+      code.textContent = token.slice(1, -1);
+      parent.appendChild(code);
+    } else if (token.startsWith("**")) {
+      const strong = document.createElement("strong");
+      strong.textContent = token.slice(2, -2);
+      parent.appendChild(strong);
+    } else {
+      const math = document.createElement("span");
+      math.className = "math-inline";
+      math.textContent = token.slice(1, -1);
+      parent.appendChild(math);
+    }
+    cursor = match.index + token.length;
+    match = pattern.exec(value);
+  }
+  if (cursor < value.length) {
+    parent.appendChild(document.createTextNode(value.slice(cursor)));
+  }
+}
+
+function isTableSeparator(line = "") {
+  return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+}
+
+function splitTableCells(line = "") {
+  return String(line)
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+function renderMarkdownInto(element, text = "") {
+  if (!element) return;
+  const value = String(text || "");
+  element.dataset.rawText = value;
+  element.classList.add("markdown-content");
+  element.innerHTML = "";
+
+  const lines = value.replace(/\r\n/g, "\n").split("\n");
+  let index = 0;
+
+  const appendParagraph = (paragraphLines) => {
+    const paragraphText = paragraphLines.join(" ").trim();
+    if (!paragraphText) return;
+    const p = document.createElement("p");
+    appendInlineMarkdown(p, paragraphText);
+    element.appendChild(p);
+  };
+
+  while (index < lines.length) {
+    const line = lines[index];
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      index += 1;
+      continue;
+    }
+
+    if (trimmed.startsWith("```")) {
+      const codeLines = [];
+      index += 1;
+      while (index < lines.length && !lines[index].trim().startsWith("```")) {
+        codeLines.push(lines[index]);
+        index += 1;
+      }
+      index += index < lines.length ? 1 : 0;
+      const pre = document.createElement("pre");
+      const code = document.createElement("code");
+      code.textContent = codeLines.join("\n");
+      pre.appendChild(code);
+      element.appendChild(pre);
+      continue;
+    }
+
+    if (trimmed.startsWith("$$")) {
+      const mathLines = [trimmed.replace(/^\$\$/, "")];
+      index += 1;
+      while (index < lines.length && !lines[index].trim().endsWith("$$")) {
+        mathLines.push(lines[index]);
+        index += 1;
+      }
+      if (index < lines.length) {
+        mathLines.push(lines[index].trim().replace(/\$\$$/, ""));
+        index += 1;
+      }
+      const math = document.createElement("div");
+      math.className = "math-block";
+      math.textContent = mathLines.join("\n").trim();
+      element.appendChild(math);
+      continue;
+    }
+
+    const heading = /^(#{1,4})\s+(.+)$/.exec(trimmed);
+    if (heading) {
+      const level = Math.min(heading[1].length + 1, 5);
+      const h = document.createElement(`h${level}`);
+      appendInlineMarkdown(h, heading[2]);
+      element.appendChild(h);
+      index += 1;
+      continue;
+    }
+
+    if (line.includes("|") && index + 1 < lines.length && isTableSeparator(lines[index + 1])) {
+      const table = document.createElement("table");
+      const thead = document.createElement("thead");
+      const tbody = document.createElement("tbody");
+      const headerRow = document.createElement("tr");
+      splitTableCells(line).forEach((cell) => {
+        const th = document.createElement("th");
+        appendInlineMarkdown(th, cell);
+        headerRow.appendChild(th);
+      });
+      thead.appendChild(headerRow);
+      table.appendChild(thead);
+      index += 2;
+      while (index < lines.length && lines[index].includes("|") && lines[index].trim()) {
+        const row = document.createElement("tr");
+        splitTableCells(lines[index]).forEach((cell) => {
+          const td = document.createElement("td");
+          appendInlineMarkdown(td, cell);
+          row.appendChild(td);
+        });
+        tbody.appendChild(row);
+        index += 1;
+      }
+      table.appendChild(tbody);
+      element.appendChild(table);
+      continue;
+    }
+
+    if (/^[-*]\s+/.test(trimmed) || /^\d+\.\s+/.test(trimmed)) {
+      const ordered = /^\d+\.\s+/.test(trimmed);
+      const list = document.createElement(ordered ? "ol" : "ul");
+      while (index < lines.length) {
+        const current = lines[index].trim();
+        const marker = ordered ? /^\d+\.\s+(.+)$/.exec(current) : /^[-*]\s+(.+)$/.exec(current);
+        if (!marker) break;
+        const item = document.createElement("li");
+        appendInlineMarkdown(item, marker[1]);
+        list.appendChild(item);
+        index += 1;
+      }
+      element.appendChild(list);
+      continue;
+    }
+
+    if (trimmed.startsWith(">")) {
+      const quote = document.createElement("blockquote");
+      appendInlineMarkdown(quote, trimmed.replace(/^>\s?/, ""));
+      element.appendChild(quote);
+      index += 1;
+      continue;
+    }
+
+    const paragraphLines = [trimmed];
+    index += 1;
+    while (
+      index < lines.length &&
+      lines[index].trim() &&
+      !lines[index].trim().startsWith("```") &&
+      !/^#{1,4}\s+/.test(lines[index].trim()) &&
+      !/^[-*]\s+/.test(lines[index].trim()) &&
+      !/^\d+\.\s+/.test(lines[index].trim()) &&
+      !(lines[index].includes("|") && index + 1 < lines.length && isTableSeparator(lines[index + 1]))
+    ) {
+      paragraphLines.push(lines[index].trim());
+      index += 1;
+    }
+    appendParagraph(paragraphLines);
+  }
 }
 
 function formatEvidenceScore(score) {
@@ -320,9 +694,14 @@ function createEvidenceBlock(evidence = []) {
 
     card.appendChild(heading);
 
+    const hitLabel = document.createElement("div");
+    hitLabel.className = "hit-label";
+    hitLabel.textContent = "命中片段";
+    card.appendChild(hitLabel);
+
     const excerpt = document.createElement("p");
     excerpt.className = "evidence-excerpt";
-    excerpt.textContent = item?.excerpt ? String(item.excerpt) : "没有可展示的片段。";
+    highlightTextInto(excerpt, item?.excerpt ? String(item.excerpt) : "没有可展示的片段。");
     card.appendChild(excerpt);
 
     list.appendChild(card);
@@ -330,6 +709,78 @@ function createEvidenceBlock(evidence = []) {
 
   details.appendChild(list);
   return details;
+}
+
+function clearSourcePanel() {
+  if (!sourcePanelList || !sourcePanelCount) return;
+  sourcePanelCount.textContent = "0";
+  sourcePanelList.innerHTML = "";
+  const empty = document.createElement("div");
+  empty.className = "source-panel-empty";
+  empty.textContent = "提问后会在这里展示知识库命中的文档片段和相关度。";
+  sourcePanelList.appendChild(empty);
+}
+
+function renderSourcePanel(evidence = []) {
+  if (!sourcePanelList || !sourcePanelCount) return;
+
+  const items = Array.isArray(evidence) ? evidence.filter((item) => item && (item.source || item.excerpt)) : [];
+  sourcePanelCount.textContent = String(items.length);
+  sourcePanelList.innerHTML = "";
+
+  if (!items.length) {
+    clearSourcePanel();
+    return;
+  }
+
+  items.forEach((item, index) => {
+    const card = document.createElement("article");
+    card.className = "source-card";
+
+    const top = document.createElement("div");
+    top.className = "source-card-top";
+
+    const icon = document.createElement("span");
+    icon.className = "source-card-icon";
+    icon.textContent = String(item.source || "").toLowerCase().endsWith(".pdf") ? "PDF" : "DOC";
+    top.appendChild(icon);
+
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "source-card-title";
+
+    const title = document.createElement("strong");
+    title.textContent = item.source ? String(item.source) : `来源 ${index + 1}`;
+    titleWrap.appendChild(title);
+
+    const kb = document.createElement("span");
+    kb.textContent = item.knowledge_base_name ? String(item.knowledge_base_name) : "全库检索";
+    titleWrap.appendChild(kb);
+    top.appendChild(titleWrap);
+
+    card.appendChild(top);
+
+    const score = formatEvidenceScore(Number(item.score));
+    if (score) {
+      const scoreEl = document.createElement("div");
+      scoreEl.className = "source-score";
+      scoreEl.textContent = score;
+      card.appendChild(scoreEl);
+    }
+
+    const excerpt = document.createElement("p");
+    excerpt.className = "source-excerpt";
+    highlightTextInto(excerpt, item.excerpt ? String(item.excerpt) : "暂无可展示片段。");
+    card.appendChild(excerpt);
+
+    if (item.location) {
+      const location = document.createElement("div");
+      location.className = "source-location";
+      location.textContent = String(item.location);
+      card.appendChild(location);
+    }
+
+    sourcePanelList.appendChild(card);
+  });
 }
 
 function formatErrorLabel(errorText, errorType = "", errorMessage = "") {
@@ -370,15 +821,30 @@ function appendMessage(role, text, options = {}) {
 
   const content = document.createElement("div");
   content.className = "message-content";
-  content.textContent = text;
+  if (role === "assistant") {
+    renderMarkdownInto(content, text);
+  } else {
+    content.textContent = text;
+    content.dataset.rawText = String(text || "");
+  }
   el.appendChild(content);
 
   if (role === "assistant" && (options.sources?.length || options.usedRag || options.knowledgeBase)) {
-    el.appendChild(createMeta(options.sources, options.usedRag, options.knowledgeBase));
+    el.appendChild(
+      createMeta(
+        options.sources,
+        options.usedRag,
+        options.knowledgeBase,
+        options.ragConfidence,
+        options.retrievalMode,
+        options.lowConfidenceReason
+      )
+    );
   }
 
   if (role === "assistant" && Array.isArray(options.evidence) && options.evidence.length) {
     el.appendChild(createEvidenceBlock(options.evidence));
+    renderSourcePanel(options.evidence);
   }
 
   messages.appendChild(el);
@@ -389,17 +855,32 @@ function appendMessage(role, text, options = {}) {
 function setMessageText(messageEl, text) {
   const content = messageEl.querySelector(".message-content");
   if (content) {
-    content.textContent = text;
+    if (messageEl.classList.contains("assistant")) {
+      renderMarkdownInto(content, text);
+    } else {
+      content.textContent = text;
+      content.dataset.rawText = String(text || "");
+    }
   }
 }
 
-function appendMessageMeta(messageEl, sourceList = [], usedRag = false, knowledgeBase = "") {
+function appendMessageMeta(
+  messageEl,
+  sourceList = [],
+  usedRag = false,
+  knowledgeBase = "",
+  ragConfidence = 0,
+  retrievalMode = "none",
+  lowConfidenceReason = ""
+) {
   if (messageEl.querySelector(".message-meta")) {
     return;
   }
 
   if (sourceList.length || usedRag || knowledgeBase) {
-    messageEl.appendChild(createMeta(sourceList, usedRag, knowledgeBase));
+    messageEl.appendChild(
+      createMeta(sourceList, usedRag, knowledgeBase, ragConfidence, retrievalMode, lowConfidenceReason)
+    );
   }
 }
 
@@ -408,6 +889,7 @@ function appendMessageEvidence(messageEl, evidence = []) {
     return;
   }
   messageEl.appendChild(createEvidenceBlock(evidence));
+  renderSourcePanel(evidence);
 }
 
 function formatSessionTime(value) {
@@ -1754,23 +2236,9 @@ function renderRecentChats(sessions) {
 
     const meta = document.createElement("div");
     meta.className = "session-meta";
-    const parts = [];
-    if (typeof session.message_count === "number") {
-      parts.push(`${session.message_count} 条消息`);
-    }
     const time = formatSessionTime(session.updated_at);
-    if (time) {
-      parts.push(time);
-    }
-    meta.textContent = parts.join(" · ");
+    meta.textContent = time || "";
     item.appendChild(meta);
-
-    if (session.summary) {
-      const summary = document.createElement("div");
-      summary.className = "session-summary";
-      summary.textContent = session.summary;
-      item.appendChild(summary);
-    }
 
     item.addEventListener("click", () => {
       openSession(session.id);
@@ -1836,7 +2304,7 @@ async function renameSession(sessionId, currentTitle) {
           message_count: Array.isArray(data.session.messages) ? data.session.messages.length : 0,
         },
         ...recentSessions.filter((item) => item.id !== sessionId),
-      ].slice(0, 10);
+      ].slice(0, 50);
       renderRecentChats(recentSessions);
     }
     showToast("会话标题已更新。", "success");
@@ -1847,6 +2315,9 @@ async function renameSession(sessionId, currentTitle) {
 
 function renderConversation(messagesData = [], includeIntro = false) {
   messages.innerHTML = "";
+  clearSourcePanel();
+  const latestUserMessage = [...messagesData].reverse().find((message) => message?.role === "user");
+  setHighlightTerms(latestUserMessage?.content || "");
   readinessMessage = appendMessage("assistant", connectionState.text);
 
   if (includeIntro) {
@@ -1863,8 +2334,12 @@ function renderConversation(messagesData = [], includeIntro = false) {
       evidence: Array.isArray(message.evidence) ? message.evidence : [],
       usedRag: Boolean(message.used_rag),
       knowledgeBase: "全库检索",
+      ragConfidence: Number(message.rag_confidence || 0),
+      retrievalMode: String(message.retrieval_mode || "none"),
+      lowConfidenceReason: String(message.low_confidence_reason || ""),
     });
   });
+  updateLearningProgress(currentSessionSummary(), messagesData);
 }
 
 function appendTyping() {
@@ -1947,9 +2422,12 @@ function upsertRecentSession(session) {
   recentSessions = [
     normalized,
     ...recentSessions.filter((item) => item.id !== normalized.id),
-  ].slice(0, 10);
+  ].slice(0, 50);
 
   renderRecentChats(recentSessions);
+  if (currentSessionId === normalized.id) {
+    updateLearningProgress(normalized, history);
+  }
 }
 
 readinessMessage = appendMessage("assistant", "正在检查 API 连接...");
@@ -1985,7 +2463,7 @@ async function loadStatus() {
 
 async function loadRecentChats() {
   try {
-    const response = await fetch("/api/sessions?limit=10");
+    const response = await fetch("/api/sessions?limit=50");
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -2024,6 +2502,7 @@ async function openSession(sessionId, options = {}) {
       history.push({ role: message.role, content: message.content });
     });
     renderConversation(session.messages || [], false);
+    updateLearningProgress(session, session.messages || []);
     renderRecentChats(recentSessions);
   } catch (error) {
     if (!options.silent) {
@@ -2122,6 +2601,7 @@ newChatButton?.addEventListener("click", () => {
   input.value = "";
   input.style.height = "auto";
   renderConversation([], true);
+  updateLearningProgress(null, []);
   renderRecentChats(recentSessions);
 });
 
@@ -2161,7 +2641,14 @@ async function submitStreamingChat(text) {
   let currentEvent = "message";
   let currentData = [];
   let streamedAnswer = "";
-  let meta = { sources: [], usedRag: false, knowledgeBase: "" };
+  let meta = {
+    sources: [],
+    usedRag: false,
+    knowledgeBase: "",
+    ragConfidence: 0,
+    retrievalMode: "none",
+    lowConfidenceReason: "",
+  };
   let evidence = [];
   let sawDelta = false;
   let streamedSessionId = currentSessionId;
@@ -2185,6 +2672,9 @@ async function submitStreamingChat(text) {
         sources: Array.isArray(payload.sources) ? payload.sources : [],
         usedRag: Boolean(payload.used_rag),
         knowledgeBase: String(payload.knowledge_base || ""),
+        ragConfidence: Number(payload.rag_confidence || 0),
+        retrievalMode: String(payload.retrieval_mode || "none"),
+        lowConfidenceReason: String(payload.low_confidence_reason || ""),
       };
       evidence = Array.isArray(payload.evidence) ? payload.evidence : evidence;
       if (payload.error || payload.error_type || payload.error_message) {
@@ -2231,7 +2721,10 @@ async function submitStreamingChat(text) {
         assistantMessage,
         Array.isArray(payload.sources) && payload.sources.length ? payload.sources : meta.sources,
         Boolean(payload.used_rag ?? meta.usedRag),
-        String(payload.knowledge_base || meta.knowledgeBase || "")
+        String(payload.knowledge_base || meta.knowledgeBase || ""),
+        Number(payload.rag_confidence ?? meta.ragConfidence ?? 0),
+        String(payload.retrieval_mode || meta.retrievalMode || "none"),
+        String(payload.low_confidence_reason || meta.lowConfidenceReason || "")
       );
       appendMessageEvidence(
         assistantMessage,
@@ -2302,9 +2795,11 @@ form.addEventListener("submit", async (event) => {
   if (isSubmitting) return;
   const text = input.value.trim();
   if (!text) return;
+  setHighlightTerms(text);
 
   appendMessage("user", text);
   history.push({ role: "user", content: text });
+  updateLearningProgress(currentSessionSummary(), history);
   input.value = "";
   input.style.height = "auto";
 
@@ -2328,6 +2823,7 @@ form.addEventListener("submit", async (event) => {
     }
     const assistantText = assistantMessage.querySelector(".message-content")?.textContent || "";
     history.push({ role: "assistant", content: assistantText });
+    updateLearningProgress(currentSessionSummary(), history);
   } catch (error) {
     if (typing.isConnected) {
       typing.remove();
@@ -2344,6 +2840,9 @@ form.addEventListener("submit", async (event) => {
         evidence: Array.isArray(data.evidence) ? data.evidence : [],
         usedRag: Boolean(data.used_rag),
         knowledgeBase: String(data.knowledge_base || ""),
+        ragConfidence: Number(data.rag_confidence || 0),
+        retrievalMode: String(data.retrieval_mode || "none"),
+        lowConfidenceReason: String(data.low_confidence_reason || ""),
       });
       if (data.error || data.error_type || data.error_message) {
         appendErrorMeta(
@@ -2363,6 +2862,7 @@ form.addEventListener("submit", async (event) => {
         role: "assistant",
         content: assistantMessage.querySelector(".message-content")?.textContent || data.answer,
       });
+      updateLearningProgress(currentSessionSummary(), history);
     } catch (fallbackError) {
       appendMessage("assistant", `请求失败：${fallbackError}`);
     }

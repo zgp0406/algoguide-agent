@@ -34,6 +34,7 @@ class RetrievedChunk:
     text: str
     location: str
     score: float
+    retrieval_mode: str = ""
 
 
 @dataclass
@@ -124,7 +125,18 @@ def _get_store() -> KnowledgeStore:
 def _score_linear(query_text: str, chunk_text: str) -> float:
     query_tokens = set(TOKEN_RE.findall(query_text.lower()))
     chunk_tokens = set(TOKEN_RE.findall(chunk_text.lower()))
-    return float(len(query_tokens & chunk_tokens))
+    score = float(len(query_tokens & chunk_tokens))
+
+    # Chinese text often has no spaces, so the regex may turn a whole sentence
+    # into one long token. Count direct substring hits as a lightweight fallback.
+    lowered_chunk = chunk_text.lower()
+    for token in query_tokens:
+        if token in chunk_tokens:
+            continue
+        if len(token) >= 2 and token in lowered_chunk:
+            score += 2.0 if re.search(r"[\u4e00-\u9fff]", token) else 1.0
+
+    return score
 
 
 def _unique_chunks(chunks: list[RetrievedChunk], k: int) -> list[RetrievedChunk]:
@@ -166,6 +178,7 @@ def retrieve_with_scores(query: str, k: int = 3) -> list[RetrievedChunk]:
                         text=chunk.text,
                         location=chunk.location,
                         score=float(score),
+                        retrieval_mode="semantic",
                     )
                 )
             return _unique_chunks(result, k)
@@ -185,6 +198,7 @@ def retrieve_with_scores(query: str, k: int = 3) -> list[RetrievedChunk]:
                     text=chunk.text,
                     location=chunk.location,
                     score=float(score),
+                    retrieval_mode="lexical",
                 )
             )
 

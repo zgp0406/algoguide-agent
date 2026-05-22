@@ -409,6 +409,12 @@ class RetrieverFallbackTests(unittest.TestCase):
         self.assertEqual(results[0].source, "graph.md")
         self.assertGreater(results[0].score, 0)
 
+    def test_retrieve_lexical_fallback_matches_chinese_substrings(self) -> None:
+        results = retriever.retrieve_with_scores("动态规划", k=2)
+
+        self.assertEqual(results[0].source, "dp.md")
+        self.assertGreaterEqual(results[0].score, 2)
+
 
 class ChatFallbackTests(IsolatedSessionsMixin, unittest.TestCase):
     def test_chat_without_api_key_returns_local_answer_and_error_type(self) -> None:
@@ -425,6 +431,31 @@ class ChatFallbackTests(IsolatedSessionsMixin, unittest.TestCase):
         self.assertIn("OPENAI_API_KEY", response.error or "")
         self.assertIsNotNone(response.session_id)
         self.assertIsNotNone(sessions.get_session(str(response.session_id)))
+
+    def test_low_confidence_retrieval_does_not_force_rag(self) -> None:
+        request = chain.ChatRequest(message="怎么准备英语作文？", history=[])
+        weak_chunk = retriever.RetrievedChunk(
+            knowledge_base_id="kb_test",
+            knowledge_base_name="测试知识库",
+            source="graph.md",
+            text="BFS 使用队列进行层序遍历。",
+            location="段落 1",
+            score=0.1,
+            retrieval_mode="semantic",
+        )
+
+        with mock.patch.dict(os.environ, {"OPENAI_API_KEY": ""}, clear=False), mock.patch(
+            "agent.chain.retrieve_with_scores",
+            return_value=[weak_chunk],
+        ):
+            response = chain.chat(request)
+
+        self.assertFalse(response.used_rag)
+        self.assertEqual(response.sources, [])
+        self.assertEqual(response.evidence, [])
+        self.assertEqual(response.retrieval_mode, "semantic")
+        self.assertGreater(response.rag_confidence, 0)
+        self.assertIn("低于阈值", response.low_confidence_reason or "")
 
 
 class UploadLimitTests(unittest.TestCase):
