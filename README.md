@@ -1,216 +1,112 @@
 # AlgoGuide Agent
 
-AlgoGuide Agent 是一个面向算法学习场景的 AI 助手原型。它不是单纯的聊天壳，而是把“提问、检索、生成、引用、保存会话”串成了一条完整链路，适合做成简历项目、答辩项目或面试演示项目。
+AlgoGuide Agent 是一个面向算法学习场景的本地 AI 问答助手。项目基于 FastAPI、静态前端、本地知识库、向量检索和 OpenAI 兼容模型接口，提供算法问题问答、知识库检索、来源引用、流式输出和会话持久化能力。
 
-## 一句话定位
+项目目标不是构建一个普通聊天页面，而是提供一条完整的 RAG 问答链路：用户提出问题后，系统先检索本地知识库，再结合命中片段生成回答，并将来源和证据片段返回给前端展示。
 
-一个能围绕算法题进行问答、检索和追问的本地 AI 助手，支持流式输出、会话保存和来源引用。
+## 功能特性
 
-## 适合谁看
+- **算法问答**：支持围绕算法概念、题解思路、复杂度分析和代码实现进行提问。
+- **RAG 检索增强**：使用 `sentence-transformers` 生成文本向量，并通过 `FAISS` 进行本地相似度检索。
+- **来源引用**：回答结果包含命中的文档来源、片段摘要、位置和相关度信息。
+- **流式输出**：支持 `/api/chat/stream` 以 Server-Sent Events 形式返回增量回答。
+- **会话持久化**：聊天记录保存到 SQLite，支持最近会话、会话详情、重命名和删除。
+- **长对话摘要**：长会话会生成摘要，并结合最近消息继续参与后续问答。
+- **知识库管理**：支持知识库列表、文档详情、文档更新、删除和重新构建索引。
+- **文档导入**：支持 `PDF`、`DOCX`、`PPTX`、`Markdown`、`TXT` 和 `LaTeX` 文件上传。
+- **OCR 兜底**：低质量 PDF 会尝试 OCR 解析，并返回可读的错误提示。
+- **本地兜底回答**：模型接口不可用或请求失败时，系统会返回本地兜底结果，保证基础可用性。
 
-- 想做算法学习助手 Demo 的同学
-- 想在面试里讲清楚 RAG / Agent 原型的人
-- 想看“前端 + 后端 + 本地知识库”完整链路的人
-- 想把一个项目包装成可展示作品的人
+## 技术栈
 
-## 演示预览
+- 后端：`FastAPI`、`Pydantic`、`Uvicorn`
+- 前端：原生 `HTML`、`CSS`、`JavaScript`
+- 存储：`SQLite`、本地 JSON 元数据
+- 检索：`sentence-transformers`、`FAISS`
+- 文档解析：`pypdf`、`PyMuPDF`、`python-docx`、`python-pptx`
+- OCR：`pytesseract`、`Pillow`
+- 测试：`unittest`、`FastAPI` 相关接口与核心模块测试
 
-- [查看答辩 PPT](tmp/presentations/algoguide-defense/output/output.pptx)
-- 下面两张图来自答辩展示版素材，适合快速了解这个项目的视觉风格和功能布局：
-
-![答辩封面](tmp/presentations/algoguide-defense/scratch/slides/slide-01.png)
-
-![功能设计页](tmp/presentations/algoguide-defense/scratch/slides/slide-04.png)
-
-## 产品截图和架构
-
-项目首页就是可用的聊天工作台：左侧管理会话、上传知识库和查看知识库总览，右侧进行算法问答并展示引用片段。
-
-建议放在作品集或简历里的截图：
-
-- **聊天问答截图**：展示用户提问、流式回答、来源引用和错误兜底提示。
-- **知识库管理截图**：展示知识库总览、文档列表、文档详情抽屉、重命名和删除操作。
-- **上传预览截图**：展示 PDF / Word / PPTX / Markdown / LaTeX 上传后的摘要、切块数量、OCR 状态和确认入库按钮。
-
-核心架构可以概括为：
+## 系统架构
 
 ```mermaid
 flowchart LR
   U[用户浏览器] --> F[静态前端]
   F --> A[FastAPI 接口]
   A --> S[SQLite 会话存储]
-  A --> K[知识库 Store]
-  K --> I[index_meta.json / FAISS]
+  A --> K[知识库管理]
+  K --> M[index_meta.json]
+  K --> V[index.faiss]
   A --> R[检索模块]
-  R --> I
-  A --> M[OpenAI 兼容模型接口]
-  M --> A
-  A --> L[本地兜底回答]
+  R --> M
+  R --> V
+  A --> L[OpenAI 兼容模型接口]
+  L --> A
+  A --> B[本地兜底回答]
   A --> F
 ```
 
-## 项目亮点
-
-- **完整闭环**：从用户提问到知识检索、模型生成、来源引用、会话保存，整条链路都能跑通。
-- **检索结果可解释**：每次回答都会带上来源和命中片段，用户能直接看到“答案从哪里来”。
-- **语义检索更精准**：使用 `sentence-transformers + FAISS` 做本地知识库语义检索，比纯关键词匹配更懂意思。
-- **支持流式输出**：回答可以边生成边展示，交互体验更自然，也更适合演示。
-- **具备兜底机制**：模型接口不可用时会自动切换到本地回答，保证项目可用性。
-- **会话持久化**：聊天记录支持保存、恢复和摘要，刷新后还能继续看历史对话。
-- **工程稳定性更强**：从 JSON 迁移到 SQLite，并保留旧数据自动导入，便于长期维护。
-- **适合简历展示**：技术栈清晰、功能完整，能直接讲成一个 RAG / Agent 原型项目。
-
-## 项目当前状态
-
-这是一个可运行的 MVP 版本，已经完成了主流程：
-
-1. 用户在网页输入问题
-2. 后端先做本地知识检索
-3. 如果配置了模型 API，就调用外部模型生成回答
-4. 回答下方会展示来源和命中片段，方便追溯依据
-5. 如果模型超时或失败，就回退到本地兜底回答
-6. 当前会话会被保存到本地 SQLite 文件 `data/sessions_store.sqlite3`
-7. 左侧列表会显示最近会话
-8. 长会话会自动生成摘要，后续提问只保留最近几轮上下文，再结合摘要继续回答
-
 ## 目录结构
 
-- `app.py`：FastAPI 入口，挂载接口和静态页面
-- `agent/chain.py`：对话编排、API 调用、流式返回
-- `agent/retriever.py`：语义检索逻辑
-- `agent/sessions.py`：本地会话持久化
-- `agent/env.py`：读取本地 `.env`
-- `agent/prompt.py`：回答风格约束
-- `knowledge/build_index.py`：构建本地索引
-- `knowledge/embeddings.py`：本地 embedding 模型封装
-- `knowledge/docs/`：知识库文档
-- `static/`：前端页面、样式和脚本
-- `data/sessions_store.sqlite3`：本地会话数据
-- `.vscode/`：VS Code 配置
+```text
+.
+├── app.py                         # FastAPI 入口和接口定义
+├── agent/
+│   ├── chain.py                   # 对话编排、模型调用、流式输出
+│   ├── retriever.py               # 本地知识库检索
+│   ├── sessions.py                # SQLite 会话存储
+│   ├── prompt.py                  # 系统提示词
+│   ├── env.py                     # .env 加载
+│   └── telemetry.py               # 本地事件日志
+├── knowledge/
+│   ├── build_index.py             # 索引构建入口
+│   ├── embeddings.py              # embedding 模型封装
+│   ├── library.py                 # 知识库和文档管理
+│   ├── docs/                      # 内置知识文档
+│   ├── index_meta.json            # 检索元数据
+│   └── index.faiss                # FAISS 向量索引
+├── static/
+│   ├── index.html                 # 前端页面
+│   ├── script.js                  # 前端交互逻辑
+│   └── style.css                  # 前端样式
+├── tests/
+│   └── test_core.py               # 核心测试
+├── requirements.txt               # 基础依赖
+├── requirements.semantic.txt      # 语义检索依赖
+└── scripts/
+    └── start.ps1                  # Windows 启动脚本
+```
 
-## 核心功能说明
+## 核心流程
 
-### 1. 聊天
+### 问答流程
 
-网页输入问题后，会发送到后端 `/api/chat` 或 `/api/chat/stream`。
+1. 用户在前端提交算法问题。
+2. 后端读取当前会话、历史消息和会话摘要。
+3. 检索模块从本地知识库中召回相关片段。
+4. 系统根据检索分数判断是否启用 RAG。
+5. 如果模型接口可用，后端调用 OpenAI 兼容接口生成回答。
+6. 如果模型接口不可用，后端返回本地兜底回答。
+7. 回答、来源、证据片段和会话状态返回前端。
+8. 本轮对话写入 SQLite。
 
-### 2. 本地知识检索
-
-当前版本使用 `sentence-transformers + FAISS`：
-
-- 先把知识文档切块
-- 再用本地 embedding 模型把片段编码成语义向量
-- 用 FAISS 做相似度搜索
-- 命中的内容会拼到模型输入里
-
-这个版本的好处是：
-
-- 比纯关键词重叠更能理解语义
-- 检索效果更适合自然语言问题
-- 仍然可以本地构建索引，不需要额外的在线 embedding API
-- 结果会以“来源 + 命中片段”的形式展示在回答下方，便于核对依据
-
-#### 向量检索流程
+### 向量检索流程
 
 ```mermaid
 flowchart LR
-  A[知识文档<br/>knowledge/docs] --> B[切块<br/>build_index.py]
-  B --> C[文本向量化<br/>sentence-transformers]
-  C --> D[FAISS 建索引<br/>index.faiss]
-  B --> E[元数据保存<br/>index_meta.json]
-
-  F[用户提问] --> G[问题向量化<br/>sentence-transformers]
-  G --> H[FAISS 相似度检索]
-  D --> H
-  H --> I[取 Top K 片段]
-  E --> I
-  I --> J[拼进 prompt]
-  J --> K[大模型生成回答]
-  K --> L[前端展示]
+  A[知识文档] --> B[解析与切块]
+  B --> C[生成 index_meta.json]
+  B --> D[文本向量化]
+  D --> E[写入 index.faiss]
+  F[用户问题] --> G[问题向量化]
+  G --> H[FAISS 相似度搜索]
+  E --> H
+  C --> I[补充来源信息]
+  H --> I
+  I --> J[拼接到模型上下文]
 ```
 
-通俗一点说，就是先把知识库文章变成向量，再把用户问题也变成向量，然后让 FAISS 去找最像的那几段内容，最后交给模型生成答案。
-
-### 3. 模型调用
-
-如果你在 `.env` 里配置了 API Key，项目会尝试调用 OpenAI 兼容接口。
-
-如果调用失败，系统会自动回退到本地兜底回答，保证页面仍然可用。
-
-### 4. 会话保存
-
-聊天记录会写入 `data/sessions_store.sqlite3`。
-
-这样做的好处是：
-
-- 刷新页面后还能看到历史会话
-- 左侧可以显示最近聊天
-- 后面可以继续扩展成真正的长期记忆
-
-### 5. 来源引用
-
-每次回答都会把命中的知识片段整理成引用信息，前端会展示：
-
-- 来源文件名
-- 命中片段摘要
-- 检索相关度或分数
-
-这能让项目在演示时更像一个“可解释的问答系统”，而不只是一个普通聊天页面。
-
-### 6. 知识库文档导入
-
-当前知识库上传支持这些格式：
-
-- `PDF`
-- `DOCX`
-- `PPTX`
-- `Markdown` (`.md` / `.markdown`)
-- `TXT`
-- `LaTeX` (`.tex` / `.latex`)
-
-说明：
-
-- 扫描版或低质量 PDF 会优先走普通文本提取，必要时自动尝试 OCR。
-- 旧版 `PPT` (`.ppt`) 目前不直接解析，建议先另存为 `PPTX` 再上传。
-- Markdown 和 LaTeX 会先做一层轻量清洗，再进入切块和索引流程。
-- 默认上传大小上限是 `50MB`，可通过 `.env` 里的 `UPLOAD_MAX_BYTES` 调整。
-
-## 接口说明
-
-- `GET /api/health`：健康检查
-- `GET /api/status`：检查当前模型配置是否可用
-- `POST /api/chat`：普通聊天接口
-- `POST /api/chat/stream`：流式聊天接口
-
-普通聊天和流式接口的返回结果里都会带上：
-
-- `answer`：回答正文
-- `sources`：来源文件列表
-- `evidence`：命中的片段和摘要
-- `used_rag`：是否命中本地知识库
-- `session_id`：当前会话 ID
-- `session`：最新会话摘要
-
-## 数据流
-
-可以把它理解成下面这个流程：
-
-```mermaid
-flowchart LR
-  A[用户输入问题] --> B[前端页面]
-  B --> C[FastAPI 接口]
-  C --> D[本地知识检索]
-  D --> E{模型可用?}
-  E -- 是 --> F[OpenAI 兼容接口]
-  E -- 否 --> G[本地兜底回答]
-  F --> H[返回答案]
-  G --> H
-  H --> I[前端展示并保存会话]
-```
-
-## 如何运行
-
-如果你只是想先把项目跑起来，按下面顺序执行就行。
+## 快速开始
 
 ### 1. 创建虚拟环境
 
@@ -224,7 +120,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
-如果 PowerShell 报执行策略限制，可以先运行：
+如果 PowerShell 阻止脚本执行，可以先运行：
 
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
@@ -232,197 +128,209 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 ### 3. 安装依赖
 
-```bash
+```powershell
 pip install -r requirements.txt
 ```
 
-如果你希望扫描版 PDF 也能更稳定识别，除了 Python 依赖外，还需要在系统里安装 `Tesseract OCR` 可执行程序；安装后默认会按 `chi_sim+eng` 语言包做识别，也可以通过环境变量 `OCR_LANG` 调整。
+如果需要启用完整语义检索能力，继续安装：
 
-如果你要启用语义检索，再额外安装：
-
-```bash
+```powershell
 pip install -r requirements.semantic.txt
 ```
 
-### 4. 构建本地索引
+### 4. 配置环境变量
 
-```bash
-python knowledge/build_index.py
-```
+复制 `.env.example` 为 `.env`，并按需填写模型配置：
 
-它会生成：
-
-- `knowledge/index_meta.json`：片段元数据
-- `knowledge/index.faiss`：FAISS 向量索引
-
-第一次运行时，`sentence-transformers` 可能会自动下载 embedding 模型。
-如果你的网络环境不方便访问 PyPI，先用基础依赖把项目跑起来，再在有网络或有离线 wheel 的环境里装语义检索依赖。
-如果你的环境暂时装不上 FAISS，脚本也会先生成元数据，服务会自动回退到本地线性相似度检索。
-
-### 5. 启动服务
-
-```bash
-uvicorn app:app --reload
-```
-
-或者直接使用一键启动脚本：
-
-```powershell
-.\scripts\start.ps1
-```
-
-可选参数：
-
-- `-Port 8010`：指定服务端口
-- `-SkipInstall`：跳过依赖安装
-- `-SkipIndex`：跳过索引构建
-- `-InstallSemanticDeps`：额外安装 FAISS / sentence-transformers 语义检索依赖
-
-### 6. 打开浏览器
-
-```text
-http://127.0.0.1:8000
-```
-
-### 启动后你应该看到什么
-
-- 左侧是最近会话
-- 右侧是对话区
-- 底部是输入框
-- 助手回答下方会显示来源和引用片段
-
-## 环境变量
-
-项目根目录支持一个本地 `.env` 文件。
-
-### OpenAI 官方接口示例
-
-```bash
-OPENAI_API_KEY=sk-...
+```env
+OPENAI_API_KEY=your_api_key
 OPENAI_MODEL=gpt-4.1-mini
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_TIMEOUT_SECONDS=60
+UPLOAD_MAX_BYTES=52428800
 ```
 
-### GLM 示例
+也可以使用其他 OpenAI 兼容接口，例如：
 
-```bash
-OPENAI_API_KEY=你的GLM_API_KEY
+```env
+OPENAI_API_KEY=your_glm_api_key
 OPENAI_MODEL=glm-5.1
 OPENAI_BASE_URL=https://open.bigmodel.cn/api/paas/v4/
 OPENAI_TIMEOUT_SECONDS=60
 ```
 
-### 说明
+### 5. 构建知识库索引
 
-- `OPENAI_API_KEY`：外部模型的访问密钥
-- `OPENAI_MODEL`：模型名称
-- `OPENAI_BASE_URL`：OpenAI 兼容接口地址
-- `OPENAI_TIMEOUT_SECONDS`：请求超时时间，网络慢时可以调大
-- `EMBEDDING_MODEL_NAME`：本地 embedding 模型名称，默认是 `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`
-- `UPLOAD_MAX_BYTES`：知识库单文件上传大小上限，默认 `52428800`，也就是 `50MB`
+```powershell
+python knowledge\build_index.py
+```
 
-## 为什么要有 `.env.example`
+成功后会生成或更新：
 
-`.env.example` 是给别人看的配置模板，里面只有示例值。
+- `knowledge/index_meta.json`
+- `knowledge/index.faiss`
 
-真正的 `.env` 放本地真实配置，不建议提交到 Git。
+如果首次下载 embedding 模型较慢，可以临时指定 Hugging Face 镜像：
 
-## 如何讲这个项目
+```powershell
+$env:HF_ENDPOINT='https://hf-mirror.com'
+$env:EMBEDDING_ALLOW_DOWNLOAD='1'
+python knowledge\build_index.py
+```
 
-如果你要在面试或答辩里介绍它，可以按这个顺序说：
+如果本机存在异常代理配置，可以在当前 PowerShell 会话中临时关闭代理：
 
-1. 先讲定位：这是一个面向算法学习场景的 AI 助手，不是普通聊天页。
-2. 再讲链路：用户提问后，系统会先检索本地知识库，再生成回答，并把来源和片段展示出来。
-3. 最后讲工程点：支持流式输出、会话持久化、兜底回答和长对话摘要，所以它不是一次性的 demo，而是一个可连续使用的工作台。
+```powershell
+$env:HTTP_PROXY=''
+$env:HTTPS_PROXY=''
+$env:ALL_PROXY=''
+$env:http_proxy=''
+$env:https_proxy=''
+$env:all_proxy=''
+$env:NO_PROXY='*'
+$env:no_proxy='*'
+```
 
-如果面试官追问亮点，可以补一句：
+### 6. 启动服务
 
-- “我做的不只是问答，而是把检索、引用、保存和多轮对话做成了完整闭环。”
-- “即使模型接口不可用，也能靠本地兜底保持可演示性。”
+```powershell
+uvicorn app:app --reload
+```
 
-## 迭代记录
+或者使用启动脚本：
 
-这个项目从最开始到现在，主要做过这些迭代：
+```powershell
+.\scripts\start.ps1
+```
 
-- **本地检索命中不准**：最初只是关键词匹配，遇到同义表达时效果一般，后来升级成 `sentence-transformers + FAISS` 语义检索，命中更稳定。
-- **依赖安装受网络影响**：语义检索依赖在国内网络下容易下载失败，后来把基础依赖和语义检索依赖拆分，并提供了镜像安装脚本。
-- **会话保存不够稳**：最初用 JSON 文件保存，随着会话变多会越来越重，后来迁移到 SQLite，更适合长期保存和查询。
-- **历史数据兼容**：迁移到 SQLite 时，保留了旧数据导入和兼容处理，方便平滑升级。
-- **首次加载优化**：`sentence-transformers` 首次加载会下载/初始化模型，因此项目增加了回退逻辑和可选依赖方案，避免首次运行被外部网络卡住。
-- **SQLite 存储稳定**：当前会话统一写入更稳的 `data/sessions_store.sqlite3`，并调整了连接参数，适合长期读写。
-- **提交链路也要稳**：前端一旦连续点发送，历史和会话状态容易乱掉，所以后来加了单请求锁；后端保存会话时如果遇到短暂锁冲突，也会先等待再继续，并尽量保住回答结果。
-- **长对话也要收得住**：历史消息一多，模型上下文会越来越长，所以后来加了会话摘要，只保留最近几轮原文，旧内容压缩成摘要再继续用。
-- **文档和实现要同步**：前面功能和存储方式变动比较多，后来把 README 里的流程图、目录结构和数据说明一起更新，避免文档落后于代码。
-- **项目要能直接交付**：在完成主链路后，又补充了简洁的项目总结、技术说明和迭代记录，方便直接用于 GitHub 展示和简历描述。
+启动后访问：
 
-## 你现在能改进什么
+```text
+http://127.0.0.1:8000
+```
 
-如果你后面想把这个项目继续做强，最值得做的顺序是：
+## 启动脚本参数
 
-1. 给 FAISS 检索加更大的 embedding 模型，比如 `bge-m3`
-2. 优化超时、重试和错误提示
-3. 把引用做成可点击的来源定位
-4. 把会话摘要做出来，提升多轮对话质量
-5. 增加更像产品的加载状态和空状态
+`scripts/start.ps1` 支持以下参数：
 
-## 迭代计划
+- `-Port 8010`：指定启动端口。
+- `-SkipInstall`：跳过依赖安装。
+- `-SkipIndex`：跳过索引构建。
+- `-InstallSemanticDeps`：额外安装语义检索依赖。
 
-后续可以按这个顺序继续做：
+示例：
 
-### 第一阶段：先把体验做稳
+```powershell
+.\scripts\start.ps1 -Port 8010 -InstallSemanticDeps
+```
 
-- 把模型加载改成启动预热，减少首次卡顿
-- 把历史上下文做裁剪，只保留最近几轮
-- 优化前端 loading、错误提示、空状态
-- 让会话列表更新更顺滑，减少重复请求
+## API 接口
 
-### 第二阶段：把 RAG 做强
+### 基础接口
 
-- 支持文档上传和重新建索引
-- 给检索结果加可点击的来源定位和高亮
-- 增加会话摘要，解决长对话上下文变长的问题
-- 尝试更强的 embedding 模型，比如 `bge-m3`
+- `GET /api/health`：健康检查。
+- `GET /api/status`：模型接口配置状态。
 
-### 第三阶段：工程化完善
+### 聊天接口
 
-- 加测试
-- 加日志和异常监控
-- 把配置分层，区分开发、测试、生产
-- 补启动脚本和部署说明
+- `POST /api/chat`：普通问答。
+- `POST /api/chat/stream`：流式问答。
 
-### 第四阶段：做成真正的应用
+聊天接口主要返回字段：
 
-- 加登录和用户隔离
-- 每个用户独立保存会话和知识库
-- 支持多知识库切换
-- 支持更完整的权限管理
+- `answer`：回答正文。
+- `sources`：来源文件列表。
+- `evidence`：命中的证据片段。
+- `used_rag`：是否使用本地知识库。
+- `rag_confidence`：检索置信度。
+- `retrieval_mode`：检索模式。
+- `low_confidence_reason`：低置信命中的原因。
+- `session_id`：当前会话 ID。
+- `session`：会话摘要信息。
 
-## 名词解释
+### 会话接口
 
-- **Agent**：会调用工具的智能助手，不只是聊天
-- **RAG**：检索增强生成，先找资料，再让模型回答
-- **Sentence Transformers**：常用的文本 embedding 框架
-- **向量索引**：把文本转成向量后做相似度检索
-- **FAISS**：常用的向量检索库
-- **API Key**：调用外部模型时使用的密钥
-- **Prompt**：给模型的指令，用来控制回答风格和格式
-- **多轮对话**：能继续追问并保留上下文
+- `GET /api/sessions`：最近会话列表。
+- `GET /api/sessions/{session_id}`：会话详情。
+- `PUT /api/sessions/{session_id}/title`：更新会话标题。
+- `DELETE /api/sessions/{session_id}`：删除会话。
 
-## 常见问题
+### 知识库接口
 
-### 为什么有时会看到兜底回答？
+- `GET /api/knowledge-bases`：知识库列表。
+- `GET /api/knowledge-bases/{knowledge_base_id}/documents`：知识库文档列表。
+- `PUT /api/knowledge-bases/{knowledge_base_id}`：重命名知识库。
+- `DELETE /api/knowledge-bases/{knowledge_base_id}`：删除知识库。
+- `GET /api/knowledge-documents/{document_id}`：文档详情。
+- `PUT /api/knowledge-documents/{document_id}`：更新文档。
+- `DELETE /api/knowledge-documents/{document_id}`：删除文档。
+- `POST /api/knowledge/upload`：上传文档并生成预览。
+- `POST /api/knowledge/confirm`：确认上传草稿并入库。
+- `POST /api/knowledge/cancel`：取消上传草稿。
 
-通常是因为模型请求超时、接口失败，或者本地检索没有命中。系统会自动切到兜底回答，保证页面可用。
+## 文档导入说明
 
-### 为什么 README 里说有会话保存？
+支持格式：
 
-因为项目里已经有 `agent/sessions.py` 和本地 SQLite 文件 `data/sessions_store.sqlite3`，聊天记录现在的主存储就是 SQLite。
+- `PDF`
+- `DOCX`
+- `PPTX`
+- `Markdown` (`.md` / `.markdown`)
+- `TXT`
+- `LaTeX` (`.tex` / `.latex`)
 
-### 这个项目现在是正式版吗？
+处理说明：
 
-不是。它是一个能演示主流程的 MVP，后面还可以继续迭代成更完整的 RAG 应用。
+- 扫描版或低质量 PDF 会先尝试普通文本提取，再按情况尝试 OCR。
+- OCR 需要系统安装 Tesseract 可执行程序，并正确配置语言包。
+- 旧版 `.ppt` 暂不直接解析，建议另存为 `.pptx` 后上传。
+- 上传大小默认限制为 `50MB`，可通过 `UPLOAD_MAX_BYTES` 调整。
 
-## 备注
+## 环境变量
 
-如果你想把它进一步包装成简历项目，建议在 README 里再加一节“项目亮点”和一张架构图截图。这个版本已经把基础说明打稳了，后面主要是继续加深工程和效果。
+- `OPENAI_API_KEY`：模型接口密钥。
+- `OPENAI_MODEL`：模型名称。
+- `OPENAI_BASE_URL`：OpenAI 兼容接口地址。
+- `OPENAI_TIMEOUT_SECONDS`：模型请求超时时间。
+- `EMBEDDING_MODEL_NAME`：本地 embedding 模型名称。
+- `EMBEDDING_ALLOW_DOWNLOAD`：是否允许首次运行时下载 embedding 模型。
+- `UPLOAD_MAX_BYTES`：单文件上传大小限制。
+- `OCR_LANG`：OCR 语言配置，默认可使用 `chi_sim+eng`。
+- `TESSDATA_PREFIX`：Tesseract 语言包目录。
+- `TESSERACT_CMD`：Tesseract 可执行文件路径。
+
+## 测试
+
+运行全部测试：
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+当前测试覆盖内容包括：
+
+- SQLite 会话保存和摘要。
+- 文档上传解析。
+- Markdown、LaTeX、PPTX、PDF 处理。
+- OCR 失败时的错误提示。
+- 知识库重命名、删除、文档更新和上传草稿。
+- 无模型密钥时的本地兜底回答。
+- 低置信度检索不强制使用 RAG。
+- 上传大小限制。
+
+## 已知限制
+
+- `sentence-transformers` 模型首次下载依赖网络环境，网络不稳定时建议使用镜像或离线模型。
+- 复杂 PDF、扫描件、公式密集文档的解析质量取决于源文件质量和 OCR 环境。
+- 当前没有用户登录和多用户隔离，所有数据默认保存在本地。
+- 知识库元数据仍包含 JSON 存储，后续可以迁移到统一数据库。
+- 前端逻辑集中在单个 `script.js` 中，功能继续扩展后适合拆分模块。
+
+## 后续规划
+
+- 支持按知识库选择检索范围。
+- 优化来源引用的定位和高亮展示。
+- 增加诊断接口，显示模型、索引、OCR 和存储状态。
+- 将知识库元数据逐步迁移到 SQLite。
+- 增加更多接口级测试和端到端测试。
+- 支持用户隔离、多知识库权限和更完整的部署配置。
