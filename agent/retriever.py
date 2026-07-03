@@ -15,6 +15,11 @@ FAISS_INDEX_PATH = KNOWLEDGE_DIR / "index.faiss"
 META_PATH = KNOWLEDGE_DIR / "index_meta.json"
 LEGACY_INDEX_PATH = KNOWLEDGE_DIR / "index.json"
 TOKEN_RE = re.compile(r"[A-Za-z0-9\u4e00-\u9fff]+")
+LATIN_TOKEN_RE = re.compile(r"[a-z0-9]+")
+CHINESE_RUN_RE = re.compile(r"[\u4e00-\u9fff]+")
+SEMANTIC_WEIGHT = 0.65
+LEXICAL_WEIGHT = 0.35
+SEMANTIC_CANDIDATE_MULTIPLIER = 10
 
 
 @dataclass
@@ -139,14 +144,37 @@ def _score_linear(query_text: str, chunk_text: str) -> float:
     return score
 
 
+def _lexical_terms(text: str) -> set[str]:
+    """提取英文词和中文二/三元组，用于补足纯向量检索的精确词匹配。"""
+    lowered = text.lower()
+    terms = set(LATIN_TOKEN_RE.findall(lowered))
+    for run in CHINESE_RUN_RE.findall(lowered):
+        for size in (2, 3):
+            terms.update(run[index : index + size] for index in range(len(run) - size + 1))
+    return terms
+
+
+def _lexical_similarity(query: str, chunk: KnowledgeChunk) -> float:
+    query_terms = _lexical_terms(query)
+    if not query_terms:
+        return 0.0
+    document_terms = _lexical_terms(f"{chunk.source} {chunk.text}")
+    return len(query_terms & document_terms) / len(query_terms)
+
+
+def _source_key(source: str) -> str:
+    return Path(str(source).replace("\\", "/")).name.casefold()
+
+
 def _unique_chunks(chunks: list[RetrievedChunk], k: int) -> list[RetrievedChunk]:
+    """每个来源只保留排序最高的片段，避免单个文件占满 Top-K。"""
     result: list[RetrievedChunk] = []
-    seen: set[tuple[str, str]] = set()
+    seen_sources: set[str] = set()
     for chunk in chunks:
-        key = (chunk.source, chunk.text)
-        if key in seen:
+        source_key = _source_key(chunk.source)
+        if source_key in seen_sources:
             continue
-        seen.add(key)
+        seen_sources.add(source_key)
         result.append(chunk)
         if len(result) >= k:
             break
@@ -164,12 +192,48 @@ def retrieve_with_scores(query: str, k: int = 3) -> list[RetrievedChunk]:
 
             query_vector = embed_text(query, model_name=store.model_name)
             query_array = np.asarray([query_vector], dtype="float32")
-            scores, indices = store.faiss_index.search(query_array, k)
+            candidate_count = min(
+                len(store.chunks),
+                max(k, k * SEMANTIC_CANDIDATE_MULTIPLIER),
+            )
+            scores, indices = store.faiss_index.search(query_array, candidate_count)
+            semantic_scores = {
+                int(index): float(score)
+                for index, score in zip(indices[0], scores[0], strict=False)
+                if 0 <= index < len(store.chunks)
+            }
+            lexical_scores = [
+                (_lexical_similarity(query, chunk), index)
+                for index, chunk in enumerate(store.chunks)
+            ]
+            lexical_scores.sort(key=lambda item: item[0], reverse=True)
+
+            # 合并语义候选和词面候选，避免精确术语对应片段在语义初筛时被漏掉。
+            candidate_indices = set(semantic_scores)
+            candidate_indices.update(
+                index for score, index in lexical_scores[:candidate_count] if score > 0
+            )
+            lexical_score_by_index = {
+                index: score for score, index in lexical_scores
+            }
             result: list[RetrievedChunk] = []
-            for index, score in zip(indices[0], scores[0], strict=False):
-                if index < 0 or index >= len(store.chunks):
-                    continue
-                chunk = store.chunks[int(index)]
+            for index in candidate_indices:
+                chunk = store.chunks[index]
+                semantic_score = semantic_scores.get(index)
+                if semantic_score is None:
+                    try:
+                        candidate_vector = np.asarray(
+                            store.faiss_index.reconstruct(index),
+                            dtype="float32",
+                        )
+                        semantic_score = float(np.dot(query_vector, candidate_vector))
+                    except Exception:
+                        semantic_score = 0.0
+                lexical_score = lexical_score_by_index.get(index, 0.0)
+                hybrid_score = (
+                    SEMANTIC_WEIGHT * semantic_score
+                    + LEXICAL_WEIGHT * lexical_score
+                )
                 result.append(
                     RetrievedChunk(
                         knowledge_base_id=chunk.knowledge_base_id,
@@ -177,10 +241,11 @@ def retrieve_with_scores(query: str, k: int = 3) -> list[RetrievedChunk]:
                         source=chunk.source,
                         text=chunk.text,
                         location=chunk.location,
-                        score=float(score),
-                        retrieval_mode="semantic",
+                        score=hybrid_score,
+                        retrieval_mode="hybrid",
                     )
                 )
+            result.sort(key=lambda item: item.score, reverse=True)
             return _unique_chunks(result, k)
         except Exception:
             # If the embedding model cannot be loaded, fall back to a simple lexical score.

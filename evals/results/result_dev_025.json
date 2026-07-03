@@ -1,0 +1,976 @@
+{
+  "summary": {
+    "split": "dev",
+    "case_count": 26,
+    "positive_count": 20,
+    "negative_count": 6,
+    "k": 3,
+    "runs_per_query": 5,
+    "warmup_count": 5,
+    "semantic_threshold": 0.25,
+    "lexical_threshold": 2.0,
+    "hardware": {
+      "platform": "Windows-10-10.0.26200-SP0",
+      "processor": "Intel64 Family 6 Model 191 Stepping 2, GenuineIntel",
+      "python": "3.10.0"
+    },
+    "faiss_index_exists": true,
+    "embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    "chunk_count": 70,
+    "hit_at_1": 0.45,
+    "hit_at_k": 0.7,
+    "mrr": 0.5583,
+    "ndcg_at_k": 0.5946,
+    "positive_rag_acceptance": 1.0,
+    "negative_rejection_rate": 0.0,
+    "gate_accuracy": 0.7692,
+    "false_accept_count": 6,
+    "false_reject_count": 0,
+    "retrieval_latency_p50_ms": 12.994,
+    "retrieval_latency_p95_ms": 15.615,
+    "gate_latency_p50_ms": 13.442,
+    "gate_latency_p95_ms": 15.803,
+    "gate_mode_counts": {
+      "semantic": 26
+    },
+    "duplicate_queries": [],
+    "category_metrics": {
+      "colloquial": {
+        "count": 4,
+        "hit_at_1": 0.25,
+        "hit_at_k": 0.5,
+        "positive_rag_acceptance": 1.0
+      },
+      "direct": {
+        "count": 6,
+        "hit_at_1": 0.6667,
+        "hit_at_k": 1.0,
+        "positive_rag_acceptance": 1.0
+      },
+      "mixed": {
+        "count": 1,
+        "hit_at_1": 1.0,
+        "hit_at_k": 1.0,
+        "positive_rag_acceptance": 1.0
+      },
+      "negative": {
+        "count": 6,
+        "hit_at_1": 0.0,
+        "hit_at_k": 0.0,
+        "positive_rag_acceptance": 0.0
+      },
+      "paraphrase": {
+        "count": 4,
+        "hit_at_1": 0.25,
+        "hit_at_k": 0.5,
+        "positive_rag_acceptance": 1.0
+      },
+      "scenario": {
+        "count": 5,
+        "hit_at_1": 0.4,
+        "hit_at_k": 0.6,
+        "positive_rag_acceptance": 1.0
+      }
+    }
+  },
+  "cases": [
+    {
+      "id": "dp_dev_01",
+      "split": "dev",
+      "category": "direct",
+      "query": "动态规划的四个基本步骤是什么？",
+      "answerable": true,
+      "expected_sources": [
+        "dynamic_programming.md"
+      ],
+      "retrieved_sources": [
+        "动态规划.pdf",
+        "dynamic_programming.md",
+        "动态规划.pdf"
+      ],
+      "scores": [
+        0.652184,
+        0.642284,
+        0.637385
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": 2,
+      "hit_at_1": false,
+      "hit_at_k": true,
+      "reciprocal_rank": 0.5,
+      "ndcg_at_k": 0.6309297535714575,
+      "used_rag": true,
+      "rag_confidence": 0.652184,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 13.268
+    },
+    {
+      "id": "dp_dev_02",
+      "split": "dev",
+      "category": "paraphrase",
+      "query": "做DP题时应该先确定状态还是先写代码？",
+      "answerable": true,
+      "expected_sources": [
+        "dynamic_programming.md"
+      ],
+      "retrieved_sources": [
+        "贪婪策略.pdf",
+        "贪婪策略.pdf",
+        "贪婪策略.pdf"
+      ],
+      "scores": [
+        0.539954,
+        0.529001,
+        0.528254
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": null,
+      "hit_at_1": false,
+      "hit_at_k": false,
+      "reciprocal_rank": 0.0,
+      "ndcg_at_k": 0.0,
+      "used_rag": true,
+      "rag_confidence": 0.539954,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 13.478
+    },
+    {
+      "id": "dp_dev_03",
+      "split": "dev",
+      "category": "scenario",
+      "query": "打家劫舍的状态转移方程怎么写？",
+      "answerable": true,
+      "expected_sources": [
+        "dynamic_programming.md"
+      ],
+      "retrieved_sources": [
+        "dynamic_programming.md",
+        "算法与算法分析.pdf",
+        "算法与算法分析.pdf"
+      ],
+      "scores": [
+        0.561342,
+        0.521069,
+        0.455708
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": 1,
+      "hit_at_1": true,
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "ndcg_at_k": 1.0,
+      "used_rag": true,
+      "rag_confidence": 0.561342,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 12.644
+    },
+    {
+      "id": "dp_dev_04",
+      "split": "dev",
+      "category": "colloquial",
+      "query": "DP总是不会初始化和处理边界，应该怎么梳理？",
+      "answerable": true,
+      "expected_sources": [
+        "dynamic_programming.md"
+      ],
+      "retrieved_sources": [
+        "贪婪策略.pdf",
+        "动态规划.pdf",
+        "动态规划.pdf"
+      ],
+      "scores": [
+        0.463731,
+        0.4523,
+        0.446292
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": null,
+      "hit_at_1": false,
+      "hit_at_k": false,
+      "reciprocal_rank": 0.0,
+      "ndcg_at_k": 0.0,
+      "used_rag": true,
+      "rag_confidence": 0.463731,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 13.913
+    },
+    {
+      "id": "graph_dev_01",
+      "split": "dev",
+      "category": "direct",
+      "query": "BFS 和 DFS 的主要区别是什么？",
+      "answerable": true,
+      "expected_sources": [
+        "graph_bfs_dfs.md"
+      ],
+      "retrieved_sources": [
+        "graph_bfs_dfs.md",
+        "算法与算法分析.pdf",
+        "算法与算法分析.pdf"
+      ],
+      "scores": [
+        0.602818,
+        0.300819,
+        0.285351
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": 1,
+      "hit_at_1": true,
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "ndcg_at_k": 1.0,
+      "used_rag": true,
+      "rag_confidence": 0.602818,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 13.751
+    },
+    {
+      "id": "graph_dev_02",
+      "split": "dev",
+      "category": "scenario",
+      "query": "无权图最短路径优先考虑哪种遍历？",
+      "answerable": true,
+      "expected_sources": [
+        "graph_bfs_dfs.md"
+      ],
+      "retrieved_sources": [
+        "动态规划.pdf",
+        "动态规划.pdf",
+        "贪婪策略.pdf"
+      ],
+      "scores": [
+        0.622152,
+        0.566512,
+        0.533398
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": null,
+      "hit_at_1": false,
+      "hit_at_k": false,
+      "reciprocal_rank": 0.0,
+      "ndcg_at_k": 0.0,
+      "used_rag": true,
+      "rag_confidence": 0.622152,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 15.946
+    },
+    {
+      "id": "graph_dev_03",
+      "split": "dev",
+      "category": "paraphrase",
+      "query": "需要穷举所有路径或组合时应该用广搜还是深搜？",
+      "answerable": true,
+      "expected_sources": [
+        "graph_bfs_dfs.md"
+      ],
+      "retrieved_sources": [
+        "动态规划.pdf",
+        "贪婪策略.pdf",
+        "graph_bfs_dfs.md"
+      ],
+      "scores": [
+        0.507284,
+        0.491998,
+        0.476632
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": 3,
+      "hit_at_1": false,
+      "hit_at_k": true,
+      "reciprocal_rank": 0.3333333333333333,
+      "ndcg_at_k": 0.5,
+      "used_rag": true,
+      "rag_confidence": 0.507284,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 13.47
+    },
+    {
+      "id": "graph_dev_04",
+      "split": "dev",
+      "category": "colloquial",
+      "query": "图遍历忘记 visited 会有什么问题？",
+      "answerable": true,
+      "expected_sources": [
+        "graph_bfs_dfs.md"
+      ],
+      "retrieved_sources": [
+        "动态规划.pdf",
+        "数据结构与算法.docx",
+        "算法与算法分析.pdf"
+      ],
+      "scores": [
+        0.257198,
+        0.256853,
+        0.240122
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": null,
+      "hit_at_1": false,
+      "hit_at_k": false,
+      "reciprocal_rank": 0.0,
+      "ndcg_at_k": 0.0,
+      "used_rag": true,
+      "rag_confidence": 0.257198,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 12.669
+    },
+    {
+      "id": "prefix_dev_01",
+      "split": "dev",
+      "category": "direct",
+      "query": "一维前缀和如何计算区间 l 到 r 的和？",
+      "answerable": true,
+      "expected_sources": [
+        "prefix_sum.md"
+      ],
+      "retrieved_sources": [
+        "动态规划.pdf",
+        "动态规划.pdf",
+        "prefix_sum.md"
+      ],
+      "scores": [
+        0.561254,
+        0.555368,
+        0.539232
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": 3,
+      "hit_at_1": false,
+      "hit_at_k": true,
+      "reciprocal_rank": 0.3333333333333333,
+      "ndcg_at_k": 0.5,
+      "used_rag": true,
+      "rag_confidence": 0.561254,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 13.267
+    },
+    {
+      "id": "prefix_dev_02",
+      "split": "dev",
+      "category": "scenario",
+      "query": "有大量重复区间求和查询应该使用什么数据结构？",
+      "answerable": true,
+      "expected_sources": [
+        "prefix_sum.md"
+      ],
+      "retrieved_sources": [
+        "数据结构与算法.docx",
+        "数据结构与算法.docx",
+        "算法与算法分析.pdf"
+      ],
+      "scores": [
+        0.713109,
+        0.620867,
+        0.564649
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": null,
+      "hit_at_1": false,
+      "hit_at_k": false,
+      "reciprocal_rank": 0.0,
+      "ndcg_at_k": 0.0,
+      "used_rag": true,
+      "rag_confidence": 0.713109,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 13.422
+    },
+    {
+      "id": "prefix_dev_03",
+      "split": "dev",
+      "category": "paraphrase",
+      "query": "为什么前缀和能快速得到子数组的区间总和？",
+      "answerable": true,
+      "expected_sources": [
+        "prefix_sum.md"
+      ],
+      "retrieved_sources": [
+        "动态规划.pdf",
+        "动态规划.pdf",
+        "动态规划.pdf"
+      ],
+      "scores": [
+        0.611711,
+        0.608106,
+        0.607387
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": null,
+      "hit_at_1": false,
+      "hit_at_k": false,
+      "reciprocal_rank": 0.0,
+      "ndcg_at_k": 0.0,
+      "used_rag": true,
+      "rag_confidence": 0.611711,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 12.92
+    },
+    {
+      "id": "prefix_dev_04",
+      "split": "dev",
+      "category": "mixed",
+      "query": "prefix sum 的 pre[r+1]-pre[l] 表示什么？",
+      "answerable": true,
+      "expected_sources": [
+        "prefix_sum.md"
+      ],
+      "retrieved_sources": [
+        "prefix_sum.md",
+        "贪婪策略.pdf",
+        "动态规划.pdf"
+      ],
+      "scores": [
+        0.644652,
+        0.454332,
+        0.429609
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": 1,
+      "hit_at_1": true,
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "ndcg_at_k": 1.0,
+      "used_rag": true,
+      "rag_confidence": 0.644652,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 12.61
+    },
+    {
+      "id": "matrix_dev_01",
+      "split": "dev",
+      "category": "direct",
+      "query": "最大子矩阵和的基本思路是什么？",
+      "answerable": true,
+      "expected_sources": [
+        "max_submatrix_sum.md"
+      ],
+      "retrieved_sources": [
+        "max_submatrix_sum.md",
+        "动态规划.pdf",
+        "贪婪策略.pdf"
+      ],
+      "scores": [
+        0.80692,
+        0.686556,
+        0.642407
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": 1,
+      "hit_at_1": true,
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "ndcg_at_k": 1.0,
+      "used_rag": true,
+      "rag_confidence": 0.80692,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 11.787
+    },
+    {
+      "id": "matrix_dev_02",
+      "split": "dev",
+      "category": "scenario",
+      "query": "如何把二维最大子矩阵问题降成一维问题？",
+      "answerable": true,
+      "expected_sources": [
+        "max_submatrix_sum.md"
+      ],
+      "retrieved_sources": [
+        "max_submatrix_sum.md",
+        "动态规划.pdf",
+        "动态规划.pdf"
+      ],
+      "scores": [
+        0.885095,
+        0.748178,
+        0.672954
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": 1,
+      "hit_at_1": true,
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "ndcg_at_k": 1.0,
+      "used_rag": true,
+      "rag_confidence": 0.885095,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 11.478
+    },
+    {
+      "id": "matrix_dev_03",
+      "split": "dev",
+      "category": "direct",
+      "query": "Kadane 算法在最大子矩阵和中负责哪一部分？",
+      "answerable": true,
+      "expected_sources": [
+        "max_submatrix_sum.md"
+      ],
+      "retrieved_sources": [
+        "max_submatrix_sum.md",
+        "动态规划.pdf",
+        "贪婪策略.pdf"
+      ],
+      "scores": [
+        0.749847,
+        0.596653,
+        0.582359
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": 1,
+      "hit_at_1": true,
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "ndcg_at_k": 1.0,
+      "used_rag": true,
+      "rag_confidence": 0.749847,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 12.343
+    },
+    {
+      "id": "matrix_dev_04",
+      "split": "dev",
+      "category": "colloquial",
+      "query": "矩阵里全是负数时为什么容易写错最大子矩阵和？",
+      "answerable": true,
+      "expected_sources": [
+        "max_submatrix_sum.md"
+      ],
+      "retrieved_sources": [
+        "动态规划.pdf",
+        "max_submatrix_sum.md",
+        "贪婪策略.pdf"
+      ],
+      "scores": [
+        0.729118,
+        0.666166,
+        0.618167
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": 2,
+      "hit_at_1": false,
+      "hit_at_k": true,
+      "reciprocal_rank": 0.5,
+      "ndcg_at_k": 0.6309297535714575,
+      "used_rag": true,
+      "rag_confidence": 0.729118,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 13.239
+    },
+    {
+      "id": "template_dev_01",
+      "split": "dev",
+      "category": "direct",
+      "query": "讲解一道算法题推荐采用什么结构？",
+      "answerable": true,
+      "expected_sources": [
+        "algorithm_answer_template.md"
+      ],
+      "retrieved_sources": [
+        "algorithm_answer_template.md",
+        "动态规划.pdf",
+        "算法与算法分析.pdf"
+      ],
+      "scores": [
+        0.809758,
+        0.687082,
+        0.672935
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": 1,
+      "hit_at_1": true,
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "ndcg_at_k": 1.0,
+      "used_rag": true,
+      "rag_confidence": 0.809758,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 11.93
+    },
+    {
+      "id": "template_dev_02",
+      "split": "dev",
+      "category": "paraphrase",
+      "query": "怎样给新手解释算法会更容易理解？",
+      "answerable": true,
+      "expected_sources": [
+        "algorithm_answer_template.md"
+      ],
+      "retrieved_sources": [
+        "algorithm_answer_template.md",
+        "算法与算法分析.pdf",
+        "算法与算法分析.pdf"
+      ],
+      "scores": [
+        0.759152,
+        0.737392,
+        0.702119
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": 1,
+      "hit_at_1": true,
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "ndcg_at_k": 1.0,
+      "used_rag": true,
+      "rag_confidence": 0.759152,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 10.796
+    },
+    {
+      "id": "template_dev_03",
+      "split": "dev",
+      "category": "scenario",
+      "query": "算法题回答中什么时候应该补充复杂度分析？",
+      "answerable": true,
+      "expected_sources": [
+        "algorithm_answer_template.md"
+      ],
+      "retrieved_sources": [
+        "算法与算法分析.pdf",
+        "algorithm_answer_template.md",
+        "动态规划.pdf"
+      ],
+      "scores": [
+        0.750683,
+        0.686457,
+        0.66911
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": 2,
+      "hit_at_1": false,
+      "hit_at_k": true,
+      "reciprocal_rank": 0.5,
+      "ndcg_at_k": 0.6309297535714575,
+      "used_rag": true,
+      "rag_confidence": 0.750683,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 11.187
+    },
+    {
+      "id": "template_dev_04",
+      "split": "dev",
+      "category": "colloquial",
+      "query": "用户说讲简单一点时，回答风格应该怎么调整？",
+      "answerable": true,
+      "expected_sources": [
+        "algorithm_answer_template.md"
+      ],
+      "retrieved_sources": [
+        "algorithm_answer_template.md",
+        "动态规划.pdf",
+        "动态规划.pdf"
+      ],
+      "scores": [
+        0.56556,
+        0.380202,
+        0.376039
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": 1,
+      "hit_at_1": true,
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "ndcg_at_k": 1.0,
+      "used_rag": true,
+      "rag_confidence": 0.56556,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 11.475
+    },
+    {
+      "id": "negative_dev_01",
+      "split": "dev",
+      "category": "negative",
+      "query": "Python 装饰器的执行顺序是什么？",
+      "answerable": false,
+      "expected_sources": [],
+      "retrieved_sources": [
+        "动态规划.pdf",
+        "贪婪策略.pdf",
+        "动态规划.pdf"
+      ],
+      "scores": [
+        0.453024,
+        0.404242,
+        0.397377
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": null,
+      "hit_at_1": false,
+      "hit_at_k": false,
+      "reciprocal_rank": 0.0,
+      "ndcg_at_k": 0.0,
+      "used_rag": true,
+      "rag_confidence": 0.453024,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 11.59
+    },
+    {
+      "id": "negative_dev_02",
+      "split": "dev",
+      "category": "negative",
+      "query": "MySQL 联合索引最左匹配原则是什么？",
+      "answerable": false,
+      "expected_sources": [],
+      "retrieved_sources": [
+        "数据结构与算法.docx",
+        "算法与算法分析.pdf",
+        "算法与算法分析.pdf"
+      ],
+      "scores": [
+        0.418852,
+        0.408908,
+        0.399303
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": null,
+      "hit_at_1": false,
+      "hit_at_k": false,
+      "reciprocal_rank": 0.0,
+      "ndcg_at_k": 0.0,
+      "used_rag": true,
+      "rag_confidence": 0.418852,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 10.38
+    },
+    {
+      "id": "negative_dev_03",
+      "split": "dev",
+      "category": "negative",
+      "query": "Transformer 的多头注意力如何计算？",
+      "answerable": false,
+      "expected_sources": [],
+      "retrieved_sources": [
+        "算法与算法分析.pdf",
+        "数据结构与算法.docx",
+        "动态规划.pdf"
+      ],
+      "scores": [
+        0.429709,
+        0.407682,
+        0.375776
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": null,
+      "hit_at_1": false,
+      "hit_at_k": false,
+      "reciprocal_rank": 0.0,
+      "ndcg_at_k": 0.0,
+      "used_rag": true,
+      "rag_confidence": 0.429709,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 13.055
+    },
+    {
+      "id": "negative_dev_04",
+      "split": "dev",
+      "category": "negative",
+      "query": "Docker Compose 怎么配置多个服务？",
+      "answerable": false,
+      "expected_sources": [],
+      "retrieved_sources": [
+        "dynamic_programming.md",
+        "动态规划.pdf",
+        "贪婪策略.pdf"
+      ],
+      "scores": [
+        0.327947,
+        0.315554,
+        0.283567
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": null,
+      "hit_at_1": false,
+      "hit_at_k": false,
+      "reciprocal_rank": 0.0,
+      "ndcg_at_k": 0.0,
+      "used_rag": true,
+      "rag_confidence": 0.327947,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 11.226
+    },
+    {
+      "id": "negative_dev_05",
+      "split": "dev",
+      "category": "negative",
+      "query": "红黑树插入后如何旋转和变色？",
+      "answerable": false,
+      "expected_sources": [],
+      "retrieved_sources": [
+        "算法与算法分析.pdf",
+        "算法与算法分析.pdf",
+        "算法与算法分析.pdf"
+      ],
+      "scores": [
+        0.315547,
+        0.295715,
+        0.2945
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": null,
+      "hit_at_1": false,
+      "hit_at_k": false,
+      "reciprocal_rank": 0.0,
+      "ndcg_at_k": 0.0,
+      "used_rag": true,
+      "rag_confidence": 0.315547,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 13.409
+    },
+    {
+      "id": "negative_dev_06",
+      "split": "dev",
+      "category": "negative",
+      "query": "TCP 三次握手为什么不能改成两次？",
+      "answerable": false,
+      "expected_sources": [],
+      "retrieved_sources": [
+        "动态规划.pdf",
+        "算法与算法分析.pdf",
+        "贪婪策略.pdf"
+      ],
+      "scores": [
+        0.371605,
+        0.367561,
+        0.355556
+      ],
+      "retrieval_modes": [
+        "semantic",
+        "semantic",
+        "semantic"
+      ],
+      "relevant_rank": null,
+      "hit_at_1": false,
+      "hit_at_k": false,
+      "reciprocal_rank": 0.0,
+      "ndcg_at_k": 0.0,
+      "used_rag": true,
+      "rag_confidence": 0.371605,
+      "gate_mode": "semantic",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 11.742
+    }
+  ]
+}

@@ -243,7 +243,7 @@ http://127.0.0.1:8000
 - `evidence`：命中的证据片段。
 - `used_rag`：是否使用本地知识库。
 - `rag_confidence`：检索置信度。
-- `retrieval_mode`：检索模式。
+- `retrieval_mode`：检索模式，语义索引可用时为 `hybrid`（语义 + 词面混合排序）。
 - `low_confidence_reason`：低置信命中的原因。
 - `session_id`：当前会话 ID。
 - `session`：会话摘要信息。
@@ -294,6 +294,7 @@ http://127.0.0.1:8000
 - `OPENAI_TIMEOUT_SECONDS`：模型请求超时时间。
 - `EMBEDDING_MODEL_NAME`：本地 embedding 模型名称。
 - `EMBEDDING_ALLOW_DOWNLOAD`：是否允许首次运行时下载 embedding 模型。
+- `RAG_SEMANTIC_THRESHOLD`：语义或混合检索的接受阈值，默认 `0.30`。
 - `UPLOAD_MAX_BYTES`：单文件上传大小限制。
 - `OCR_LANG`：OCR 语言配置，默认可使用 `chi_sim+eng`。
 - `TESSDATA_PREFIX`：Tesseract 语言包目录。

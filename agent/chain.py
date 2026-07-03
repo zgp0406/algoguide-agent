@@ -55,7 +55,7 @@ _API_STATUS_TTL_SECONDS = 60.0
 _API_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "60"))
 _MAX_RECENT_HISTORY_MESSAGES = 8
 _DEFAULT_KNOWLEDGE_BASE_NAME = "全库检索"
-_SEMANTIC_RAG_THRESHOLD = float(os.getenv("RAG_SEMANTIC_THRESHOLD", "0.32"))
+_SEMANTIC_RAG_THRESHOLD = float(os.getenv("RAG_SEMANTIC_THRESHOLD", "0.30"))
 _LEXICAL_RAG_THRESHOLD = float(os.getenv("RAG_LEXICAL_THRESHOLD", "2"))
 
 
@@ -259,10 +259,10 @@ def _rag_confidence(chunks: list[object]) -> tuple[float, str, str | None]:
             pass
     top_score = max(scores) if scores else 0.0
 
-    if mode == "semantic":
+    if mode in {"semantic", "hybrid"}:
         confidence = max(0.0, min(1.0, top_score))
         if top_score < _SEMANTIC_RAG_THRESHOLD:
-            return confidence, mode, f"语义相关度 {confidence:.2f} 低于阈值 {_SEMANTIC_RAG_THRESHOLD:.2f}"
+            return confidence, mode, f"检索相关度 {confidence:.2f} 低于阈值 {_SEMANTIC_RAG_THRESHOLD:.2f}"
         return confidence, mode, None
 
     if mode == "lexical":

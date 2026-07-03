@@ -1,0 +1,548 @@
+{
+  "summary": {
+    "split": "test",
+    "case_count": 14,
+    "positive_count": 10,
+    "negative_count": 4,
+    "k": 3,
+    "runs_per_query": 10,
+    "warmup_count": 5,
+    "semantic_threshold": 0.3,
+    "lexical_threshold": 2.0,
+    "hardware": {
+      "platform": "Windows-10-10.0.26200-SP0",
+      "processor": "Intel64 Family 6 Model 191 Stepping 2, GenuineIntel",
+      "python": "3.10.0"
+    },
+    "faiss_index_exists": true,
+    "embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    "chunk_count": 70,
+    "hit_at_1": 0.9,
+    "hit_at_k": 0.9,
+    "mrr": 0.9,
+    "ndcg_at_k": 0.9,
+    "positive_rag_acceptance": 1.0,
+    "negative_rejection_rate": 1.0,
+    "gate_accuracy": 1.0,
+    "false_accept_count": 0,
+    "false_reject_count": 0,
+    "retrieval_latency_p50_ms": 47.663,
+    "retrieval_latency_p95_ms": 55.296,
+    "gate_latency_p50_ms": 47.691,
+    "gate_latency_p95_ms": 61.557,
+    "gate_mode_counts": {
+      "hybrid": 14
+    },
+    "duplicate_queries": [],
+    "category_metrics": {
+      "direct": {
+        "count": 4,
+        "hit_at_1": 1.0,
+        "hit_at_k": 1.0,
+        "positive_rag_acceptance": 1.0
+      },
+      "negative": {
+        "count": 4,
+        "hit_at_1": 0.0,
+        "hit_at_k": 0.0,
+        "positive_rag_acceptance": 0.0
+      },
+      "paraphrase": {
+        "count": 4,
+        "hit_at_1": 1.0,
+        "hit_at_k": 1.0,
+        "positive_rag_acceptance": 1.0
+      },
+      "scenario": {
+        "count": 2,
+        "hit_at_1": 0.5,
+        "hit_at_k": 0.5,
+        "positive_rag_acceptance": 1.0
+      }
+    }
+  },
+  "cases": [
+    {
+      "id": "dp_test_01",
+      "split": "test",
+      "category": "paraphrase",
+      "query": "重复子问题很多并且能由小问题推出大问题时用什么方法？",
+      "answerable": true,
+      "expected_sources": [
+        "dynamic_programming.md"
+      ],
+      "retrieved_sources": [
+        "dynamic_programming.md",
+        "动态规划.pdf",
+        "算法与算法分析.pdf"
+      ],
+      "scores": [
+        0.524036,
+        0.44903,
+        0.412411
+      ],
+      "retrieval_modes": [
+        "hybrid",
+        "hybrid",
+        "hybrid"
+      ],
+      "relevant_rank": 1,
+      "hit_at_1": true,
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "ndcg_at_k": 1.0,
+      "used_rag": true,
+      "rag_confidence": 0.524036,
+      "gate_mode": "hybrid",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 50.38
+    },
+    {
+      "id": "dp_test_02",
+      "split": "test",
+      "category": "scenario",
+      "query": "不偷当前房子和偷当前房子分别对应哪个状态？",
+      "answerable": true,
+      "expected_sources": [
+        "dynamic_programming.md"
+      ],
+      "retrieved_sources": [
+        "dynamic_programming.md",
+        "算法与算法分析.pdf",
+        "贪婪策略.pdf"
+      ],
+      "scores": [
+        0.325968,
+        0.239509,
+        0.230726
+      ],
+      "retrieval_modes": [
+        "hybrid",
+        "hybrid",
+        "hybrid"
+      ],
+      "relevant_rank": 1,
+      "hit_at_1": true,
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "ndcg_at_k": 1.0,
+      "used_rag": true,
+      "rag_confidence": 0.325968,
+      "gate_mode": "hybrid",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 49.605
+    },
+    {
+      "id": "graph_test_01",
+      "split": "test",
+      "category": "direct",
+      "query": "BFS 为什么使用队列？",
+      "answerable": true,
+      "expected_sources": [
+        "graph_bfs_dfs.md"
+      ],
+      "retrieved_sources": [
+        "graph_bfs_dfs.md",
+        "算法与算法分析.pdf",
+        "数据结构与算法.docx"
+      ],
+      "scores": [
+        0.426344,
+        0.293254,
+        0.276878
+      ],
+      "retrieval_modes": [
+        "hybrid",
+        "hybrid",
+        "hybrid"
+      ],
+      "relevant_rank": 1,
+      "hit_at_1": true,
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "ndcg_at_k": 1.0,
+      "used_rag": true,
+      "rag_confidence": 0.426344,
+      "gate_mode": "hybrid",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 47.195
+    },
+    {
+      "id": "graph_test_02",
+      "split": "test",
+      "category": "paraphrase",
+      "query": "一层一层向外扩展的是哪种搜索方式？",
+      "answerable": true,
+      "expected_sources": [
+        "graph_bfs_dfs.md"
+      ],
+      "retrieved_sources": [
+        "graph_bfs_dfs.md",
+        "算法与算法分析.pdf",
+        "动态规划.pdf"
+      ],
+      "scores": [
+        0.424325,
+        0.347997,
+        0.342382
+      ],
+      "retrieval_modes": [
+        "hybrid",
+        "hybrid",
+        "hybrid"
+      ],
+      "relevant_rank": 1,
+      "hit_at_1": true,
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "ndcg_at_k": 1.0,
+      "used_rag": true,
+      "rag_confidence": 0.424325,
+      "gate_mode": "hybrid",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 47.896
+    },
+    {
+      "id": "prefix_test_01",
+      "split": "test",
+      "category": "direct",
+      "query": "二维前缀和适合解决什么问题？",
+      "answerable": true,
+      "expected_sources": [
+        "prefix_sum.md"
+      ],
+      "retrieved_sources": [
+        "prefix_sum.md",
+        "max_submatrix_sum.md",
+        "algorithm_answer_template.md"
+      ],
+      "scores": [
+        0.419775,
+        0.412548,
+        0.402168
+      ],
+      "retrieval_modes": [
+        "hybrid",
+        "hybrid",
+        "hybrid"
+      ],
+      "relevant_rank": 1,
+      "hit_at_1": true,
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "ndcg_at_k": 1.0,
+      "used_rag": true,
+      "rag_confidence": 0.419775,
+      "gate_mode": "hybrid",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 46.296
+    },
+    {
+      "id": "prefix_test_02",
+      "split": "test",
+      "category": "scenario",
+      "query": "要反复查询矩阵某个区域的元素和，应该想到什么方法？",
+      "answerable": true,
+      "expected_sources": [
+        "prefix_sum.md"
+      ],
+      "retrieved_sources": [
+        "max_submatrix_sum.md",
+        "动态规划.pdf",
+        "数据结构与算法.docx"
+      ],
+      "scores": [
+        0.503799,
+        0.411966,
+        0.387883
+      ],
+      "retrieval_modes": [
+        "hybrid",
+        "hybrid",
+        "hybrid"
+      ],
+      "relevant_rank": null,
+      "hit_at_1": false,
+      "hit_at_k": false,
+      "reciprocal_rank": 0.0,
+      "ndcg_at_k": 0.0,
+      "used_rag": true,
+      "rag_confidence": 0.503799,
+      "gate_mode": "hybrid",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 49.07
+    },
+    {
+      "id": "matrix_test_01",
+      "split": "test",
+      "category": "paraphrase",
+      "query": "固定上下边界以后为什么要把每一列累加起来？",
+      "answerable": true,
+      "expected_sources": [
+        "max_submatrix_sum.md"
+      ],
+      "retrieved_sources": [
+        "max_submatrix_sum.md",
+        "算法与算法分析.pdf",
+        "动态规划.pdf"
+      ],
+      "scores": [
+        0.46483,
+        0.352632,
+        0.346976
+      ],
+      "retrieval_modes": [
+        "hybrid",
+        "hybrid",
+        "hybrid"
+      ],
+      "relevant_rank": 1,
+      "hit_at_1": true,
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "ndcg_at_k": 1.0,
+      "used_rag": true,
+      "rag_confidence": 0.46483,
+      "gate_mode": "hybrid",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 50.284
+    },
+    {
+      "id": "matrix_test_02",
+      "split": "test",
+      "category": "direct",
+      "query": "最大子矩阵和算法的时间和空间复杂度是多少？",
+      "answerable": true,
+      "expected_sources": [
+        "max_submatrix_sum.md"
+      ],
+      "retrieved_sources": [
+        "max_submatrix_sum.md",
+        "动态规划.pdf",
+        "算法与算法分析.pdf"
+      ],
+      "scores": [
+        0.617751,
+        0.592464,
+        0.519573
+      ],
+      "retrieval_modes": [
+        "hybrid",
+        "hybrid",
+        "hybrid"
+      ],
+      "relevant_rank": 1,
+      "hit_at_1": true,
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "ndcg_at_k": 1.0,
+      "used_rag": true,
+      "rag_confidence": 0.617751,
+      "gate_mode": "hybrid",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 51.057
+    },
+    {
+      "id": "template_test_01",
+      "split": "test",
+      "category": "direct",
+      "query": "AlgoGuide 的回答应该先讲直觉还是先贴代码？",
+      "answerable": true,
+      "expected_sources": [
+        "algorithm_answer_template.md"
+      ],
+      "retrieved_sources": [
+        "algorithm_answer_template.md",
+        "算法与算法分析.pdf",
+        "动态规划.pdf"
+      ],
+      "scores": [
+        0.587154,
+        0.46433,
+        0.4255
+      ],
+      "retrieval_modes": [
+        "hybrid",
+        "hybrid",
+        "hybrid"
+      ],
+      "relevant_rank": 1,
+      "hit_at_1": true,
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "ndcg_at_k": 1.0,
+      "used_rag": true,
+      "rag_confidence": 0.587154,
+      "gate_mode": "hybrid",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 48.251
+    },
+    {
+      "id": "template_test_02",
+      "split": "test",
+      "category": "paraphrase",
+      "query": "如何按照固定步骤把算法题讲清楚？",
+      "answerable": true,
+      "expected_sources": [
+        "algorithm_answer_template.md"
+      ],
+      "retrieved_sources": [
+        "algorithm_answer_template.md",
+        "算法与算法分析.pdf",
+        "贪婪策略.pdf"
+      ],
+      "scores": [
+        0.55207,
+        0.515846,
+        0.439457
+      ],
+      "retrieval_modes": [
+        "hybrid",
+        "hybrid",
+        "hybrid"
+      ],
+      "relevant_rank": 1,
+      "hit_at_1": true,
+      "hit_at_k": true,
+      "reciprocal_rank": 1.0,
+      "ndcg_at_k": 1.0,
+      "used_rag": true,
+      "rag_confidence": 0.55207,
+      "gate_mode": "hybrid",
+      "low_confidence_reason": null,
+      "retrieval_latency_ms": 44.138
+    },
+    {
+      "id": "negative_test_01",
+      "split": "test",
+      "category": "negative",
+      "query": "Java 垃圾回收器有哪些类型？",
+      "answerable": false,
+      "expected_sources": [],
+      "retrieved_sources": [
+        "数据结构与算法.docx",
+        "算法与算法分析.pdf",
+        "动态规划.pdf"
+      ],
+      "scores": [
+        0.205083,
+        0.155109,
+        0.151589
+      ],
+      "retrieval_modes": [
+        "hybrid",
+        "hybrid",
+        "hybrid"
+      ],
+      "relevant_rank": null,
+      "hit_at_1": false,
+      "hit_at_k": false,
+      "reciprocal_rank": 0.0,
+      "ndcg_at_k": 0.0,
+      "used_rag": false,
+      "rag_confidence": 0.205083,
+      "gate_mode": "hybrid",
+      "low_confidence_reason": "检索相关度 0.21 低于阈值 0.30",
+      "retrieval_latency_ms": 47.058
+    },
+    {
+      "id": "negative_test_02",
+      "split": "test",
+      "category": "negative",
+      "query": "Redis 缓存穿透应该如何解决？",
+      "answerable": false,
+      "expected_sources": [],
+      "retrieved_sources": [
+        "动态规划.pdf",
+        "graph_bfs_dfs.md",
+        "贪婪策略.pdf"
+      ],
+      "scores": [
+        0.21989,
+        0.211811,
+        0.194684
+      ],
+      "retrieval_modes": [
+        "hybrid",
+        "hybrid",
+        "hybrid"
+      ],
+      "relevant_rank": null,
+      "hit_at_1": false,
+      "hit_at_k": false,
+      "reciprocal_rank": 0.0,
+      "ndcg_at_k": 0.0,
+      "used_rag": false,
+      "rag_confidence": 0.21989,
+      "gate_mode": "hybrid",
+      "low_confidence_reason": "检索相关度 0.22 低于阈值 0.30",
+      "retrieval_latency_ms": 51.95
+    },
+    {
+      "id": "negative_test_03",
+      "split": "test",
+      "category": "negative",
+      "query": "操作系统发生死锁需要满足哪些条件？",
+      "answerable": false,
+      "expected_sources": [],
+      "retrieved_sources": [
+        "贪婪策略.pdf",
+        "动态规划.pdf",
+        "算法与算法分析.pdf"
+      ],
+      "scores": [
+        0.254268,
+        0.230376,
+        0.230319
+      ],
+      "retrieval_modes": [
+        "hybrid",
+        "hybrid",
+        "hybrid"
+      ],
+      "relevant_rank": null,
+      "hit_at_1": false,
+      "hit_at_k": false,
+      "reciprocal_rank": 0.0,
+      "ndcg_at_k": 0.0,
+      "used_rag": false,
+      "rag_confidence": 0.254268,
+      "gate_mode": "hybrid",
+      "low_confidence_reason": "检索相关度 0.25 低于阈值 0.30",
+      "retrieval_latency_ms": 48.774
+    },
+    {
+      "id": "negative_test_04",
+      "split": "test",
+      "category": "negative",
+      "query": "卷积神经网络中的池化层有什么作用？",
+      "answerable": false,
+      "expected_sources": [],
+      "retrieved_sources": [
+        "算法与算法分析.pdf",
+        "贪婪策略.pdf",
+        "max_submatrix_sum.md"
+      ],
+      "scores": [
+        0.190073,
+        0.177746,
+        0.163926
+      ],
+      "retrieval_modes": [
+        "hybrid",
+        "hybrid",
+        "hybrid"
+      ],
+      "relevant_rank": null,
+      "hit_at_1": false,
+      "hit_at_k": false,
+      "reciprocal_rank": 0.0,
+      "ndcg_at_k": 0.0,
+      "used_rag": false,
+      "rag_confidence": 0.190073,
+      "gate_mode": "hybrid",
+      "low_confidence_reason": "检索相关度 0.19 低于阈值 0.30",
+      "retrieval_latency_ms": 44.036
+    }
+  ]
+}

@@ -415,6 +415,49 @@ class RetrieverFallbackTests(unittest.TestCase):
         self.assertEqual(results[0].source, "dp.md")
         self.assertGreaterEqual(results[0].score, 2)
 
+    def test_unique_chunks_keeps_only_best_chunk_per_source(self) -> None:
+        chunks = [
+            retriever.RetrievedChunk("kb", "测试", "same.md", "第一段", "", 0.9),
+            retriever.RetrievedChunk("kb", "测试", "same.md", "第二段", "", 0.8),
+            retriever.RetrievedChunk("kb", "测试", "other.md", "第三段", "", 0.7),
+        ]
+
+        results = retriever._unique_chunks(chunks, k=3)
+
+        self.assertEqual([item.source for item in results], ["same.md", "other.md"])
+
+    def test_hybrid_retrieval_reranks_and_diversifies_sources(self) -> None:
+        class FakeIndex:
+            def search(self, query_array, candidate_count):
+                import numpy as np
+
+                return (
+                    np.asarray([[0.80, 0.79, 0.70]], dtype="float32"),
+                    np.asarray([[0, 1, 2]], dtype="int64"),
+                )
+
+        retriever._STORE_CACHE = retriever.KnowledgeStore(
+            chunks=[
+                retriever.KnowledgeChunk("kb", "测试", "noise.pdf", "矩阵算法概述"),
+                retriever.KnowledgeChunk("kb", "测试", "noise.pdf", "二维数组基础"),
+                retriever.KnowledgeChunk(
+                    "kb",
+                    "测试",
+                    "prefix_sum.md",
+                    "二维前缀和适合快速查询矩阵区域和",
+                ),
+            ],
+            model_name="test-model",
+            faiss_index=FakeIndex(),
+            signature=None,
+        )
+
+        with mock.patch("agent.retriever.embed_text", return_value=[1.0, 0.0]):
+            results = retriever.retrieve_with_scores("二维前缀和查询矩阵区域和", k=2)
+
+        self.assertEqual([item.source for item in results], ["prefix_sum.md", "noise.pdf"])
+        self.assertTrue(all(item.retrieval_mode == "hybrid" for item in results))
+
 
 class ChatFallbackTests(IsolatedSessionsMixin, unittest.TestCase):
     def test_chat_without_api_key_returns_local_answer_and_error_type(self) -> None:

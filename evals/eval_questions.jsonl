@@ -1,0 +1,40 @@
+{"id":"dp_dev_01","split":"dev","category":"direct","query":"动态规划的四个基本步骤是什么？","answerable":true,"relevant_sources":["dynamic_programming.md"]}
+{"id":"dp_dev_02","split":"dev","category":"paraphrase","query":"做DP题时应该先确定状态还是先写代码？","answerable":true,"relevant_sources":["dynamic_programming.md"]}
+{"id":"dp_dev_03","split":"dev","category":"scenario","query":"打家劫舍的状态转移方程怎么写？","answerable":true,"relevant_sources":["dynamic_programming.md"]}
+{"id":"dp_dev_04","split":"dev","category":"colloquial","query":"DP总是不会初始化和处理边界，应该怎么梳理？","answerable":true,"relevant_sources":["dynamic_programming.md"]}
+{"id":"dp_test_01","split":"test","category":"paraphrase","query":"重复子问题很多并且能由小问题推出大问题时用什么方法？","answerable":true,"relevant_sources":["dynamic_programming.md"]}
+{"id":"dp_test_02","split":"test","category":"scenario","query":"不偷当前房子和偷当前房子分别对应哪个状态？","answerable":true,"relevant_sources":["dynamic_programming.md"]}
+{"id":"graph_dev_01","split":"dev","category":"direct","query":"BFS 和 DFS 的主要区别是什么？","answerable":true,"relevant_sources":["graph_bfs_dfs.md"]}
+{"id":"graph_dev_02","split":"dev","category":"scenario","query":"无权图最短路径优先考虑哪种遍历？","answerable":true,"relevant_sources":["graph_bfs_dfs.md"]}
+{"id":"graph_dev_03","split":"dev","category":"paraphrase","query":"需要穷举所有路径或组合时应该用广搜还是深搜？","answerable":true,"relevant_sources":["graph_bfs_dfs.md"]}
+{"id":"graph_dev_04","split":"dev","category":"colloquial","query":"图遍历忘记 visited 会有什么问题？","answerable":true,"relevant_sources":["graph_bfs_dfs.md"]}
+{"id":"graph_test_01","split":"test","category":"direct","query":"BFS 为什么使用队列？","answerable":true,"relevant_sources":["graph_bfs_dfs.md"]}
+{"id":"graph_test_02","split":"test","category":"paraphrase","query":"一层一层向外扩展的是哪种搜索方式？","answerable":true,"relevant_sources":["graph_bfs_dfs.md"]}
+{"id":"prefix_dev_01","split":"dev","category":"direct","query":"一维前缀和如何计算区间 l 到 r 的和？","answerable":true,"relevant_sources":["prefix_sum.md"]}
+{"id":"prefix_dev_02","split":"dev","category":"scenario","query":"有大量重复区间求和查询应该使用什么数据结构？","answerable":true,"relevant_sources":["prefix_sum.md"]}
+{"id":"prefix_dev_03","split":"dev","category":"paraphrase","query":"为什么前缀和能快速得到子数组的区间总和？","answerable":true,"relevant_sources":["prefix_sum.md"]}
+{"id":"prefix_dev_04","split":"dev","category":"mixed","query":"prefix sum 的 pre[r+1]-pre[l] 表示什么？","answerable":true,"relevant_sources":["prefix_sum.md"]}
+{"id":"prefix_test_01","split":"test","category":"direct","query":"二维前缀和适合解决什么问题？","answerable":true,"relevant_sources":["prefix_sum.md"]}
+{"id":"prefix_test_02","split":"test","category":"scenario","query":"要反复查询矩阵某个区域的元素和，应该想到什么方法？","answerable":true,"relevant_sources":["prefix_sum.md"]}
+{"id":"matrix_dev_01","split":"dev","category":"direct","query":"最大子矩阵和的基本思路是什么？","answerable":true,"relevant_sources":["max_submatrix_sum.md"]}
+{"id":"matrix_dev_02","split":"dev","category":"scenario","query":"如何把二维最大子矩阵问题降成一维问题？","answerable":true,"relevant_sources":["max_submatrix_sum.md"]}
+{"id":"matrix_dev_03","split":"dev","category":"direct","query":"Kadane 算法在最大子矩阵和中负责哪一部分？","answerable":true,"relevant_sources":["max_submatrix_sum.md"]}
+{"id":"matrix_dev_04","split":"dev","category":"colloquial","query":"矩阵里全是负数时为什么容易写错最大子矩阵和？","answerable":true,"relevant_sources":["max_submatrix_sum.md"]}
+{"id":"matrix_test_01","split":"test","category":"paraphrase","query":"固定上下边界以后为什么要把每一列累加起来？","answerable":true,"relevant_sources":["max_submatrix_sum.md"]}
+{"id":"matrix_test_02","split":"test","category":"direct","query":"最大子矩阵和算法的时间和空间复杂度是多少？","answerable":true,"relevant_sources":["max_submatrix_sum.md"]}
+{"id":"template_dev_01","split":"dev","category":"direct","query":"讲解一道算法题推荐采用什么结构？","answerable":true,"relevant_sources":["algorithm_answer_template.md"]}
+{"id":"template_dev_02","split":"dev","category":"paraphrase","query":"怎样给新手解释算法会更容易理解？","answerable":true,"relevant_sources":["algorithm_answer_template.md"]}
+{"id":"template_dev_03","split":"dev","category":"scenario","query":"算法题回答中什么时候应该补充复杂度分析？","answerable":true,"relevant_sources":["algorithm_answer_template.md"]}
+{"id":"template_dev_04","split":"dev","category":"colloquial","query":"用户说讲简单一点时，回答风格应该怎么调整？","answerable":true,"relevant_sources":["algorithm_answer_template.md"]}
+{"id":"template_test_01","split":"test","category":"direct","query":"AlgoGuide 的回答应该先讲直觉还是先贴代码？","answerable":true,"relevant_sources":["algorithm_answer_template.md"]}
+{"id":"template_test_02","split":"test","category":"paraphrase","query":"如何按照固定步骤把算法题讲清楚？","answerable":true,"relevant_sources":["algorithm_answer_template.md"]}
+{"id":"negative_dev_01","split":"dev","category":"negative","query":"Python 装饰器的执行顺序是什么？","answerable":false,"relevant_sources":[]}
+{"id":"negative_dev_02","split":"dev","category":"negative","query":"MySQL 联合索引最左匹配原则是什么？","answerable":false,"relevant_sources":[]}
+{"id":"negative_dev_03","split":"dev","category":"negative","query":"Transformer 的多头注意力如何计算？","answerable":false,"relevant_sources":[]}
+{"id":"negative_dev_04","split":"dev","category":"negative","query":"Docker Compose 怎么配置多个服务？","answerable":false,"relevant_sources":[]}
+{"id":"negative_dev_05","split":"dev","category":"negative","query":"红黑树插入后如何旋转和变色？","answerable":false,"relevant_sources":[]}
+{"id":"negative_dev_06","split":"dev","category":"negative","query":"TCP 三次握手为什么不能改成两次？","answerable":false,"relevant_sources":[]}
+{"id":"negative_test_01","split":"test","category":"negative","query":"Java 垃圾回收器有哪些类型？","answerable":false,"relevant_sources":[]}
+{"id":"negative_test_02","split":"test","category":"negative","query":"Redis 缓存穿透应该如何解决？","answerable":false,"relevant_sources":[]}
+{"id":"negative_test_03","split":"test","category":"negative","query":"操作系统发生死锁需要满足哪些条件？","answerable":false,"relevant_sources":[]}
+{"id":"negative_test_04","split":"test","category":"negative","query":"卷积神经网络中的池化层有什么作用？","answerable":false,"relevant_sources":[]}
