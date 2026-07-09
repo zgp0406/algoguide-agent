@@ -16,10 +16,12 @@ AlgoGuide Agent 是一个面向算法学习场景的本地 AI 问答助手。项
 - **文档导入**：支持 `PDF`、`DOCX`、`PPTX`、`Markdown`、`TXT` 和 `LaTeX` 文件上传。
 - **OCR 兜底**：低质量 PDF 会尝试 OCR 解析，并返回可读的错误提示。
 - **本地兜底回答**：模型接口不可用或请求失败时，系统会返回本地兜底结果，保证基础可用性。
+- **双生成后端**：可通过 `CHAIN_BACKEND` 在原生请求与 LangChain LCEL 生成链之间切换。
 
 ## 技术栈
 
 - 后端：`FastAPI`、`Pydantic`、`Uvicorn`
+- 生成编排：原生 `urllib` 或 `LangChain LCEL`
 - 前端：原生 `HTML`、`CSS`、`JavaScript`
 - 存储：`SQLite`、本地 JSON 元数据
 - 检索：`sentence-transformers`、`FAISS`
@@ -40,8 +42,12 @@ flowchart LR
   A --> R[检索模块]
   R --> M
   R --> V
-  A --> L[OpenAI 兼容模型接口]
-  L --> A
+  A --> C{CHAIN_BACKEND}
+  C --> N[NativeBackend]
+  C --> L[LangChainBackend]
+  N --> O[OpenAI 兼容模型接口]
+  L --> O
+  O --> A
   A --> B[本地兜底回答]
   A --> F
 ```
@@ -53,11 +59,17 @@ flowchart LR
 ├── app.py                         # FastAPI 入口和接口定义
 ├── agent/
 │   ├── chain.py                   # 对话编排、模型调用、流式输出
+│   ├── langchain_retriever.py     # 现有检索结果到 LangChain Document 的适配
 │   ├── retriever.py               # 本地知识库检索
 │   ├── sessions.py                # SQLite 会话存储
 │   ├── prompt.py                  # 系统提示词
 │   ├── env.py                     # .env 加载
-│   └── telemetry.py               # 本地事件日志
+│   ├── telemetry.py               # 本地事件日志
+│   └── backends/
+│       ├── base.py                # 统一生成输入、输出和后端协议
+│       ├── native.py              # urllib 原生生成后端
+│       ├── langchain.py           # LangChain LCEL 生成后端
+│       └── factory.py             # 根据 CHAIN_BACKEND 选择后端
 ├── knowledge/
 │   ├── build_index.py             # 索引构建入口
 │   ├── embeddings.py              # embedding 模型封装
@@ -70,8 +82,10 @@ flowchart LR
 │   ├── script.js                  # 前端交互逻辑
 │   └── style.css                  # 前端样式
 ├── tests/
-│   └── test_core.py               # 核心测试
+│   ├── test_core.py               # 核心测试
+│   └── test_backends.py           # 双后端及流式协议测试
 ├── requirements.txt               # 基础依赖
+├── requirements.langchain.txt     # LangChain 后端依赖
 ├── requirements.semantic.txt      # 语义检索依赖
 └── scripts/
     └── start.ps1                  # Windows 启动脚本
@@ -85,10 +99,29 @@ flowchart LR
 2. 后端读取当前会话、历史消息和会话摘要。
 3. 检索模块从本地知识库中召回相关片段。
 4. 系统根据检索分数判断是否启用 RAG。
-5. 如果模型接口可用，后端调用 OpenAI 兼容接口生成回答。
-6. 如果模型接口不可用，后端返回本地兜底回答。
-7. 回答、来源、证据片段和会话状态返回前端。
-8. 本轮对话写入 SQLite。
+5. 如果模型接口可用，根据 `CHAIN_BACKEND` 选择 Native 或 LangChain 后端。
+6. 选中的后端使用同一份问题、历史消息和检索上下文调用 OpenAI 兼容接口。
+7. 如果模型接口不可用，后端返回本地兜底回答。
+8. 回答、来源、证据片段和会话状态返回前端。
+9. 本轮对话写入 SQLite。
+
+### 生成后端切换
+
+Native 后端是默认稳定基线，直接使用 `urllib` 调用 OpenAI 兼容接口：
+
+```env
+CHAIN_BACKEND=native
+```
+
+LangChain 后端使用 `ChatPromptTemplate | ChatOpenAI | StrOutputParser` 组成 LCEL
+生成链，并通过同一套 SSE 协议返回流式结果：
+
+```env
+CHAIN_BACKEND=langchain
+```
+
+两种后端共用检索、置信度门控、来源、证据、会话和遥测逻辑。正常请求只会调用
+当前选中的一个后端，不会产生双倍模型请求。
 
 ### 向量检索流程
 
@@ -138,6 +171,12 @@ pip install -r requirements.txt
 pip install -r requirements.semantic.txt
 ```
 
+如果需要启用 LangChain 后端，继续安装：
+
+```powershell
+pip install -r requirements.langchain.txt
+```
+
 ### 4. 配置环境变量
 
 复制 `.env.example` 为 `.env`，并按需填写模型配置：
@@ -147,6 +186,7 @@ OPENAI_API_KEY=your_api_key
 OPENAI_MODEL=gpt-4.1-mini
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_TIMEOUT_SECONDS=60
+CHAIN_BACKEND=native
 UPLOAD_MAX_BYTES=52428800
 ```
 
@@ -292,6 +332,7 @@ http://127.0.0.1:8000
 - `OPENAI_MODEL`：模型名称。
 - `OPENAI_BASE_URL`：OpenAI 兼容接口地址。
 - `OPENAI_TIMEOUT_SECONDS`：模型请求超时时间。
+- `CHAIN_BACKEND`：回答生成后端，可选 `native`（默认）或 `langchain`。
 - `EMBEDDING_MODEL_NAME`：本地 embedding 模型名称。
 - `EMBEDDING_ALLOW_DOWNLOAD`：是否允许首次运行时下载 embedding 模型。
 - `RAG_SEMANTIC_THRESHOLD`：语义或混合检索的接受阈值，默认 `0.30`。
@@ -318,6 +359,10 @@ python -m unittest discover -s tests -v
 - 无模型密钥时的本地兜底回答。
 - 低置信度检索不强制使用 RAG。
 - 上传大小限制。
+- Native/LangChain 后端工厂选择。
+- 两种后端的统一生成协议和 LangChain 流式文本适配。
+- LangChain Retriever 的来源、位置、分数和检索模式元数据。
+- SSE 事件顺序 `meta → delta → done`。
 
 ## 已知限制
 

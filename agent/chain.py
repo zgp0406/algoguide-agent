@@ -2,16 +2,15 @@ from __future__ import annotations
 
 import json
 import os
-import urllib.error
-import urllib.request
 from collections.abc import Iterator
 from time import monotonic
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from agent.backends.base import GenerationRequest
+from agent.backends.factory import create_backend
 from agent.env import load_env_file
-from agent.prompt import SYSTEM_PROMPT
 from agent.retriever import retrieve_with_scores
 from agent.sessions import append_turn, get_session, list_sessions, upsert_session_message
 from agent.telemetry import classify_error, log_event
@@ -52,7 +51,6 @@ class ApiStatusResponse(BaseModel):
 
 _API_STATUS_CACHE: tuple[float, ApiStatusResponse] | None = None
 _API_STATUS_TTL_SECONDS = 60.0
-_API_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "60"))
 _MAX_RECENT_HISTORY_MESSAGES = 8
 _DEFAULT_KNOWLEDGE_BASE_NAME = "全库检索"
 _SEMANTIC_RAG_THRESHOLD = float(os.getenv("RAG_SEMANTIC_THRESHOLD", "0.30"))
@@ -66,10 +64,6 @@ def _api_config() -> tuple[str, str, str]:
     if not base_url:
         base_url = "https://api.openai.com/v1"
     return api_key, model, base_url.rstrip("/")
-
-
-def _proxyless_opener() -> urllib.request.OpenerDirector:
-    return urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def _chunk_text(text: str, size: int = 20) -> Iterator[str]:
@@ -274,130 +268,6 @@ def _rag_confidence(chunks: list[object]) -> tuple[float, str, str | None]:
     return 0.0, mode or "none", "无法判断检索模式，未使用知识库片段"
 
 
-def _build_model_messages(
-    *,
-    prompt: str,
-    history: list[dict[str, str]],
-    session_summary: str = "",
-) -> list[dict[str, str]]:
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    summary_text = str(session_summary or "").strip()
-    if summary_text:
-        messages.append({"role": "system", "content": f"会话摘要：{summary_text}"})
-    messages.extend(_compact_history(history))
-    messages.append({"role": "user", "content": prompt})
-    return messages
-
-
-def _request_chat_completion(
-    messages: list[dict[str, str]],
-    *,
-    temperature: float = 0.2,
-    max_tokens: int | None = None,
-) -> tuple[str, dict[str, object]]:
-    api_key, model, base_url = _api_config()
-    if not api_key:
-        raise RuntimeError("Missing OPENAI_API_KEY")
-
-    payload: dict[str, object] = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-    }
-    if max_tokens is not None:
-        payload["max_tokens"] = max_tokens
-
-    url = f"{base_url}/chat/completions"
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-    )
-
-    try:
-        with _proxyless_opener().open(request, timeout=_API_TIMEOUT_SECONDS) as response:
-            response_data = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(_format_http_error(exc)) from exc
-
-    choices = response_data.get("choices") or []
-    if not choices:
-        raise RuntimeError("API response missing choices")
-
-    message = choices[0].get("message") or {}
-    content = message.get("content") or ""
-    return content, response_data
-
-
-
-def _request_chat_completion_stream(
-    messages: list[dict[str, str]],
-    *,
-    temperature: float = 0.2,
-) -> Iterator[str]:
-    api_key, model, base_url = _api_config()
-    if not api_key:
-        raise RuntimeError("Missing OPENAI_API_KEY")
-
-    payload: dict[str, object] = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-        "stream": True,
-    }
-
-    url = f"{base_url}/chat/completions"
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-    )
-
-    try:
-        with _proxyless_opener().open(request, timeout=_API_TIMEOUT_SECONDS) as response:
-            for raw_line in response:
-                line = raw_line.decode("utf-8", errors="replace").strip()
-                if not line:
-                    continue
-                if not line.startswith("data:"):
-                    continue
-
-                data = line[5:].strip()
-                if data == "[DONE]":
-                    break
-
-                chunk = json.loads(data)
-                choices = chunk.get("choices") or []
-                if not choices:
-                    continue
-
-                delta = choices[0].get("delta") or {}
-                content = delta.get("content") or ""
-                if content:
-                    yield content
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(_format_http_error(exc)) from exc
-
-
-def _format_http_error(exc: urllib.error.HTTPError) -> str:
-    try:
-        body = exc.read().decode("utf-8", errors="replace")
-    except Exception:
-        body = ""
-    detail = f"{exc.code} {exc.reason}".strip()
-    if body:
-        return f"HTTPError: {detail} - {body}"
-    return f"HTTPError: {detail}"
-
-
 def _sse_event(event: str, data: dict[str, object]) -> bytes:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n".encode("utf-8")
 
@@ -471,7 +341,7 @@ def build_context(message: str) -> tuple[str, list[str], list[dict[str, object]]
         elapsed_ms=elapsed_ms,
     )
     if not usable_chunks:
-        return message, [], [], False, _knowledge_base_name(), rag_confidence, retrieval_mode, low_confidence_reason
+        return "", [], [], False, _knowledge_base_name(), rag_confidence, retrieval_mode, low_confidence_reason
 
     context_lines = []
     sources = []
@@ -484,14 +354,8 @@ def build_context(message: str) -> tuple[str, list[str], list[dict[str, object]]
         sources.append(chunk.source)
 
     context = "\n\n".join(context_lines)
-    prompt = (
-        "Relevant knowledge with citations:\n"
-        f"{context}\n\n"
-        f"User question: {message}\n"
-        "请优先基于以上证据回答，并在答案里自然提及关键来源。"
-    )
     return (
-        prompt,
+        context,
         _unique_strings(sources),
         _format_evidence_items(usable_chunks),
         True,
@@ -579,7 +443,7 @@ def _build_meta_payload(
 def chat(request: ChatRequest) -> ChatResponse:
     started_at = monotonic()
     (
-        prompt,
+        context,
         sources,
         evidence,
         used_rag,
@@ -596,10 +460,16 @@ def chat(request: ChatRequest) -> ChatResponse:
     if api_key:
         try:
             model_started_at = monotonic()
-            answer, _ = _request_chat_completion(
-                _build_model_messages(prompt=prompt, history=request.history, session_summary=session_summary),
-                temperature=0.2,
+            backend = create_backend()
+            result = backend.generate(
+                GenerationRequest(
+                    question=request.message,
+                    context=context,
+                    history=_compact_history(request.history),
+                    session_summary=session_summary,
+                )
             )
+            answer = result.answer
             model_elapsed_ms = round((monotonic() - model_started_at) * 1000, 2)
             saved_session_id, storage_error = _save_turn(
                 session_id,
@@ -723,7 +593,7 @@ def chat(request: ChatRequest) -> ChatResponse:
 def stream_chat(request: ChatRequest) -> Iterator[bytes]:
     started_at = monotonic()
     (
-        prompt,
+        context,
         sources,
         evidence,
         used_rag,
@@ -809,7 +679,12 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
         )
         return
 
-    messages = _build_model_messages(prompt=prompt, history=request.history, session_summary=session_summary)
+    generation_request = GenerationRequest(
+        question=request.message,
+        context=context,
+        history=_compact_history(request.history),
+        session_summary=session_summary,
+    )
 
     try:
         meta_error, meta_error_type, meta_error_message = _error_payload(storage_error)
@@ -832,7 +707,8 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
         )
         model_started_at = monotonic()
         answer_parts: list[str] = []
-        for chunk in _request_chat_completion_stream(messages, temperature=0.2):
+        backend = create_backend()
+        for chunk in backend.stream(generation_request):
             answer_parts.append(chunk)
             yield _sse_event("delta", {"text": chunk})
         model_elapsed_ms = round((monotonic() - model_started_at) * 1000, 2)
@@ -882,7 +758,7 @@ def stream_chat(request: ChatRequest) -> Iterator[bytes]:
     except Exception as exc:
         # If the provider refuses streaming, fall back to a normal completion and chunk locally.
         try:
-            answer, _ = _request_chat_completion(messages, temperature=0.2)
+            answer = create_backend().generate(generation_request).answer
         except Exception:
             answer = local_answer(request.message, sources, used_rag, evidence)
         saved_session_id, answer_storage_error = _save_answer_message(
