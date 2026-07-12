@@ -2193,3 +2193,107 @@ button[type="submit"]:hover {
     opacity: 1;
   }
 }
+
+/* ── Agent 思考气泡 ─────────────────────────────────────────── */
+
+.message.thinking {
+  opacity: 0.72;
+  font-style: italic;
+  animation: thinkFadeIn 0.3s ease;
+}
+
+.message.thinking .message-content {
+  background: rgba(17, 24, 39, 0.05);
+  border: 1px dashed rgba(17, 24, 39, 0.15);
+  color: var(--text-muted, #5f6b7a);
+  font-size: 0.875em;
+  padding: 10px 14px;
+  border-radius: 10px;
+}
+
+@keyframes thinkFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 0.72; transform: translateY(0); }
+}
+
+/* ── Agent 工具调用卡片 ─────────────────────────────────────── */
+
+.tool-call-card {
+  margin: 6px 0 6px 36px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(20, 99, 243, 0.04), rgba(20, 99, 243, 0.01));
+  border: 1px solid rgba(20, 99, 243, 0.18);
+  font-size: 0.85em;
+  animation: toolSlideIn 0.25s ease;
+}
+
+.tool-call-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.tool-call-icon {
+  font-size: 1.1em;
+}
+
+.tool-call-header strong {
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
+  font-size: 0.9em;
+  color: var(--accent, #1463f3);
+}
+
+.tool-call-badge {
+  margin-left: auto;
+  font-size: 0.78em;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: rgba(17, 24, 39, 0.08);
+  color: var(--text-muted, #5f6b7a);
+}
+
+.tool-call-badge-done {
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+}
+
+.tool-call-badge-error {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+
+.tool-call-args {
+  overflow-x: auto;
+}
+
+.tool-call-args code {
+  font-size: 0.82em;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text-muted, #5f6b7a);
+}
+
+.tool-call-result {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(17, 24, 39, 0.04);
+  font-size: 0.84em;
+  color: var(--text, #111827);
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tool-call-result-error {
+  color: #dc2626;
+  background: rgba(239, 68, 68, 0.06);
+}
+
+@keyframes toolSlideIn {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}

@@ -81,16 +81,16 @@ class ChainBackendIntegrationTests(unittest.TestCase):
 
     def test_chat_uses_selected_backend(self) -> None:
         with mock.patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}), mock.patch(
-            "agent.chain.build_context",
+            "agent.chat.build_context",
             return_value=self.context_result,
         ), mock.patch(
-            "agent.chain.create_backend",
+            "agent.chat.create_backend",
             return_value=FakeBackend(),
         ), mock.patch(
-            "agent.chain._save_turn",
+            "agent.chat._save_turn",
             return_value=("session-1", None),
         ), mock.patch(
-            "agent.chain.get_session",
+            "agent.chat.get_session",
             return_value=None,
         ):
             response = chain.chat(chain.ChatRequest(message="什么是 BFS？"))
@@ -101,19 +101,19 @@ class ChainBackendIntegrationTests(unittest.TestCase):
 
     def test_stream_keeps_meta_delta_done_order(self) -> None:
         with mock.patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}), mock.patch(
-            "agent.chain.build_context",
+            "agent.stream.build_context",
             return_value=self.context_result,
         ), mock.patch(
-            "agent.chain.create_backend",
+            "agent.stream.create_backend",
             return_value=FakeBackend(),
         ), mock.patch(
-            "agent.chain._save_user_message",
+            "agent.stream._save_user_message",
             return_value=("session-1", None),
         ), mock.patch(
-            "agent.chain._save_answer_message",
+            "agent.stream._save_answer_message",
             return_value=("session-1", None),
         ), mock.patch(
-            "agent.chain.get_session",
+            "agent.stream.get_session",
             return_value=None,
         ):
             events = b"".join(chain.stream_chat(chain.ChatRequest(message="什么是 BFS？"))).decode("utf-8")

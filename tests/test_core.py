@@ -181,62 +181,59 @@ class KnowledgeManagementTests(unittest.TestCase):
         self.original_paths = {
             "DATA_DIR": library.DATA_DIR,
             "STORE_PATH": library.STORE_PATH,
+            "KB_DB_PATH": library.KB_DB_PATH,
+            "KB_LEGACY_MIGRATED_PATH": library.KB_LEGACY_MIGRATED_PATH,
             "DRAFTS_DIR": library.DRAFTS_DIR,
             "DOCS_DIR": library.DOCS_DIR,
             "_INITIALIZED": library._INITIALIZED,
         }
         library.DATA_DIR = self.root / "data"
         library.STORE_PATH = library.DATA_DIR / "knowledge_store.json"
+        library.KB_DB_PATH = library.DATA_DIR / "knowledge_store.sqlite3"
+        library.KB_LEGACY_MIGRATED_PATH = library.DATA_DIR / "knowledge_legacy_imported.flag"
         library.DRAFTS_DIR = library.DATA_DIR / "knowledge_drafts"
         library.DOCS_DIR = self.root / "docs"
         library._INITIALIZED = False
         library.DATA_DIR.mkdir(parents=True, exist_ok=True)
         library.DOCS_DIR.mkdir(parents=True, exist_ok=True)
-        store = {
-            "knowledge_bases": [
-                {
-                    "id": library.BUILTIN_KB_ID,
-                    "name": library.BUILTIN_KB_NAME,
-                    "kind": "builtin",
-                    "created_at": "2026-01-01T00:00:00+00:00",
-                    "updated_at": "2026-01-01T00:00:00+00:00",
-                },
-                {
-                    "id": "kb_custom",
-                    "name": "旧知识库",
-                    "kind": "custom",
-                    "created_at": "2026-01-01T00:00:00+00:00",
-                    "updated_at": "2026-01-01T00:00:00+00:00",
-                },
-            ],
-            "documents": [
-                {
-                    "id": "doc_custom",
-                    "source_key": "upload:test",
-                    "knowledge_base_id": "kb_custom",
-                    "knowledge_base_name": "旧知识库",
-                    "source_type": "upload",
-                    "filename": "dp.docx",
-                    "title": "旧标题",
-                    "summary": "动态规划",
-                    "text": "动态规划关注状态转移。",
-                    "blocks": [{"text": "动态规划关注状态转移。", "location": "段落 1"}],
-                    "chunks": [
-                        {
-                            "source": "dp.docx",
-                            "knowledge_base_id": "kb_custom",
-                            "knowledge_base_name": "旧知识库",
-                            "text": "动态规划关注状态转移。",
-                            "location": "段落 1",
-                            "chunk_index": 0,
-                        }
-                    ],
-                    "created_at": "2026-01-01T00:00:00+00:00",
-                    "updated_at": "2026-01-01T00:00:00+00:00",
-                }
-            ],
-        }
-        library.STORE_PATH.write_text(json.dumps(store, ensure_ascii=False), encoding="utf-8")
+
+        # Write test data directly to SQLite
+        import sqlite3
+        conn = sqlite3.connect(str(library.KB_DB_PATH))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        library._ensure_kb_schema(conn)
+        conn.execute(
+            "INSERT INTO knowledge_bases (id, name, kind, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (library.BUILTIN_KB_ID, library.BUILTIN_KB_NAME, "builtin", "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
+        )
+        conn.execute(
+            "INSERT INTO knowledge_bases (id, name, kind, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            ("kb_custom", "旧知识库", "custom", "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
+        )
+        conn.execute(
+            """INSERT INTO documents
+               (id, knowledge_base_id, source_key, source_type, filename, mime_type,
+                title, summary, text, blocks_json, chunks_json, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "doc_custom", "kb_custom", "upload:test", "upload", "dp.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "旧标题", "动态规划", "动态规划关注状态转移。",
+                json.dumps([{"text": "动态规划关注状态转移。", "location": "段落 1"}]),
+                json.dumps([{"source": "dp.docx", "knowledge_base_id": "kb_custom",
+                 "knowledge_base_name": "旧知识库", "text": "动态规划关注状态转移。",
+                 "location": "段落 1", "chunk_index": 0}]),
+                "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00",
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+        # Mark migration as done to prevent import from non-existent JSON
+        library.KB_LEGACY_MIGRATED_PATH.parent.mkdir(parents=True, exist_ok=True)
+        library.KB_LEGACY_MIGRATED_PATH.write_text("2026-01-01T00:00:00+00:00", encoding="utf-8")
+
         self.rebuild_patch = mock.patch("knowledge.library.rebuild_artifacts", return_value={"faiss_status": "skipped"})
         self.rebuild_patch.start()
 
@@ -244,6 +241,8 @@ class KnowledgeManagementTests(unittest.TestCase):
         self.rebuild_patch.stop()
         library.DATA_DIR = self.original_paths["DATA_DIR"]
         library.STORE_PATH = self.original_paths["STORE_PATH"]
+        library.KB_DB_PATH = self.original_paths["KB_DB_PATH"]
+        library.KB_LEGACY_MIGRATED_PATH = self.original_paths["KB_LEGACY_MIGRATED_PATH"]
         library.DRAFTS_DIR = self.original_paths["DRAFTS_DIR"]
         library.DOCS_DIR = self.original_paths["DOCS_DIR"]
         library._INITIALIZED = self.original_paths["_INITIALIZED"]
@@ -464,7 +463,7 @@ class ChatFallbackTests(IsolatedSessionsMixin, unittest.TestCase):
         request = chain.ChatRequest(message="怎么讲前缀和？", history=[])
 
         with mock.patch.dict(os.environ, {"OPENAI_API_KEY": ""}, clear=False), mock.patch(
-            "agent.chain.retrieve_with_scores",
+            "agent.context.retrieve_with_scores",
             return_value=[],
         ):
             response = chain.chat(request)
@@ -488,7 +487,7 @@ class ChatFallbackTests(IsolatedSessionsMixin, unittest.TestCase):
         )
 
         with mock.patch.dict(os.environ, {"OPENAI_API_KEY": ""}, clear=False), mock.patch(
-            "agent.chain.retrieve_with_scores",
+            "agent.context.retrieve_with_scores",
             return_value=[weak_chunk],
         ):
             response = chain.chat(request)

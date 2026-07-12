@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sqlite3
 import unicodedata
 from html import unescape
 from dataclasses import dataclass
@@ -21,6 +22,8 @@ KNOWLEDGE_DIR = BASE_DIR / "knowledge"
 DOCS_DIR = KNOWLEDGE_DIR / "docs"
 DATA_DIR = BASE_DIR / "data"
 STORE_PATH = DATA_DIR / "knowledge_store.json"
+KB_DB_PATH = DATA_DIR / "knowledge_store.sqlite3"
+KB_LEGACY_MIGRATED_PATH = DATA_DIR / "knowledge_legacy_imported.flag"
 DRAFTS_DIR = DATA_DIR / "knowledge_drafts"
 INDEX_META_PATH = KNOWLEDGE_DIR / "index_meta.json"
 INDEX_JSON_PATH = KNOWLEDGE_DIR / "index.json"
@@ -43,6 +46,204 @@ GARBAGE_CHAR_RE = re.compile(r"[^\w\s\u4e00-\u9fff，。！？；：、,.!?;:()�
 
 _LOCK = RLock()
 _INITIALIZED = False
+
+
+# ── SQLite 知识库存储 ────────────────────────────────────────────
+
+
+def _connect_kb() -> sqlite3.Connection:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(KB_DB_PATH))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 3000")
+    conn.execute("PRAGMA journal_mode = MEMORY")
+    conn.execute("PRAGMA synchronous = NORMAL")
+    return conn
+
+
+def _ensure_kb_schema(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS knowledge_bases (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            kind TEXT NOT NULL DEFAULT 'custom',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS documents (
+            id TEXT PRIMARY KEY,
+            knowledge_base_id TEXT NOT NULL,
+            source_key TEXT NOT NULL,
+            source_type TEXT NOT NULL DEFAULT 'upload',
+            filename TEXT NOT NULL,
+            mime_type TEXT NOT NULL DEFAULT '',
+            title TEXT NOT NULL,
+            summary TEXT NOT NULL DEFAULT '',
+            text TEXT NOT NULL DEFAULT '',
+            blocks_json TEXT,
+            chunks_json TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(knowledge_base_id) REFERENCES knowledge_bases(id)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_documents_kb
+        ON documents(knowledge_base_id)
+        """
+    )
+
+
+def _import_legacy_kb_json(conn: sqlite3.Connection) -> None:
+    """一次性从 knowledge_store.json 迁移到 SQLite。"""
+    if KB_LEGACY_MIGRATED_PATH.exists():
+        return
+
+    existing = conn.execute("SELECT 1 FROM knowledge_bases LIMIT 1").fetchone()
+    if existing:
+        KB_LEGACY_MIGRATED_PATH.parent.mkdir(parents=True, exist_ok=True)
+        KB_LEGACY_MIGRATED_PATH.write_text(_now(), encoding="utf-8")
+        return
+
+    if not STORE_PATH.exists():
+        KB_LEGACY_MIGRATED_PATH.parent.mkdir(parents=True, exist_ok=True)
+        KB_LEGACY_MIGRATED_PATH.write_text(_now(), encoding="utf-8")
+        return
+
+    try:
+        payload = json.loads(STORE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        KB_LEGACY_MIGRATED_PATH.parent.mkdir(parents=True, exist_ok=True)
+        KB_LEGACY_MIGRATED_PATH.write_text(_now(), encoding="utf-8")
+        return
+
+    if not isinstance(payload, dict):
+        KB_LEGACY_MIGRATED_PATH.parent.mkdir(parents=True, exist_ok=True)
+        KB_LEGACY_MIGRATED_PATH.write_text(_now(), encoding="utf-8")
+        return
+
+    knowledge_bases = payload.get("knowledge_bases")
+    if isinstance(knowledge_bases, list):
+        for kb in knowledge_bases:
+            if not isinstance(kb, dict):
+                continue
+            conn.execute(
+                "INSERT OR IGNORE INTO knowledge_bases (id, name, kind, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (
+                    str(kb.get("id") or ""),
+                    str(kb.get("name") or "未命名知识库"),
+                    str(kb.get("kind") or "custom"),
+                    str(kb.get("created_at") or _now()),
+                    str(kb.get("updated_at") or _now()),
+                ),
+            )
+
+    documents = payload.get("documents")
+    if isinstance(documents, list):
+        for doc in documents:
+            if not isinstance(doc, dict):
+                continue
+            blocks = doc.get("blocks")
+            blocks_json = json.dumps(blocks, ensure_ascii=False) if isinstance(blocks, list) else None
+            chunks = doc.get("chunks")
+            chunks_json = json.dumps(chunks, ensure_ascii=False) if isinstance(chunks, list) else None
+            conn.execute(
+                """INSERT OR IGNORE INTO documents
+                   (id, knowledge_base_id, source_key, source_type, filename, mime_type,
+                    title, summary, text, blocks_json, chunks_json, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    str(doc.get("id") or ""),
+                    str(doc.get("knowledge_base_id") or ""),
+                    str(doc.get("source_key") or ""),
+                    str(doc.get("source_type") or "upload"),
+                    str(doc.get("filename") or ""),
+                    str(doc.get("mime_type") or ""),
+                    str(doc.get("title") or doc.get("filename") or ""),
+                    str(doc.get("summary") or ""),
+                    str(doc.get("text") or ""),
+                    blocks_json,
+                    chunks_json,
+                    str(doc.get("created_at") or _now()),
+                    str(doc.get("updated_at") or _now()),
+                ),
+            )
+
+    conn.commit()
+    KB_LEGACY_MIGRATED_PATH.parent.mkdir(parents=True, exist_ok=True)
+    KB_LEGACY_MIGRATED_PATH.write_text(_now(), encoding="utf-8")
+
+
+# ── SQLite 读写辅助 ──────────────────────────────────────────────
+
+
+def _kb_rows_to_dicts(rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
+    return [dict(row) for row in rows]
+
+
+def _doc_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
+    doc = dict(row)
+    # 反序列化 JSON 字段
+    for field in ("blocks_json", "chunks_json"):
+        raw = doc.pop(field, None)
+        key = field.replace("_json", "")
+        if raw:
+            try:
+                doc[key] = json.loads(str(raw))
+            except (json.JSONDecodeError, TypeError):
+                doc[key] = []
+        else:
+            doc[key] = []
+    return doc
+
+
+def _load_knowledge_bases(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    rows = conn.execute("SELECT * FROM knowledge_bases ORDER BY kind != 'builtin', name").fetchall()
+    return _kb_rows_to_dicts(rows)
+
+
+def _load_documents(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """SELECT d.*, kb.name AS knowledge_base_name
+           FROM documents d
+           LEFT JOIN knowledge_bases kb ON kb.id = d.knowledge_base_id"""
+    ).fetchall()
+    return [_doc_row_to_dict(row) for row in rows]
+
+
+def _load_documents_for_kb(conn: sqlite3.Connection, kb_id: str) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """SELECT d.*, kb.name AS knowledge_base_name
+           FROM documents d
+           LEFT JOIN knowledge_bases kb ON kb.id = d.knowledge_base_id
+           WHERE d.knowledge_base_id = ?""",
+        (kb_id,),
+    ).fetchall()
+    return [_doc_row_to_dict(row) for row in rows]
+
+
+def _load_document_by_id(conn: sqlite3.Connection, doc_id: str) -> dict[str, Any] | None:
+    row = conn.execute(
+        """SELECT d.*, kb.name AS knowledge_base_name
+           FROM documents d
+           LEFT JOIN knowledge_bases kb ON kb.id = d.knowledge_base_id
+           WHERE d.id = ?""",
+        (doc_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return _doc_row_to_dict(row)
+
+
+# ══════════════════════════════════════════════════════════════════
 
 
 @dataclass
@@ -279,53 +480,60 @@ def _write_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _default_store_payload() -> dict[str, Any]:
-    now = _now()
-    return {
-        "knowledge_bases": [
-            {
-                "id": BUILTIN_KB_ID,
-                "name": BUILTIN_KB_NAME,
-                "kind": "builtin",
-                "created_at": now,
-                "updated_at": now,
-            }
-        ],
-        "documents": [],
-    }
+def _ensure_kb_initialized() -> None:
+    global _INITIALIZED
+    if _INITIALIZED:
+        return
+
+    with _LOCK:
+        if _INITIALIZED:
+            return
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        conn = _connect_kb()
+        try:
+            _ensure_kb_schema(conn)
+            _import_legacy_kb_json(conn)
+            conn.commit()
+        finally:
+            conn.close()
+
+        # 确认内置知识库存在
+        conn = _connect_kb()
+        try:
+            builtin = conn.execute(
+                "SELECT id FROM knowledge_bases WHERE id = ?", (BUILTIN_KB_ID,)
+            ).fetchone()
+            if not builtin:
+                now = _now()
+                conn.execute(
+                    "INSERT INTO knowledge_bases (id, name, kind, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                    (BUILTIN_KB_ID, BUILTIN_KB_NAME, "builtin", now, now),
+                )
+                conn.commit()
+        finally:
+            conn.close()
+
+        _INITIALIZED = True
+
+        # 种子文档和索引重建
+        builtins_added = _seed_builtin_documents()
+        if builtins_added or not INDEX_JSON_PATH.exists() or not INDEX_META_PATH.exists():
+            rebuild_artifacts()
 
 
-def _load_store_payload() -> dict[str, Any]:
-    payload = _read_json(STORE_PATH, {})
-    if not isinstance(payload, dict):
-        payload = {}
-
-    store = _default_store_payload()
-    knowledge_bases = payload.get("knowledge_bases")
-    if isinstance(knowledge_bases, list):
-        store["knowledge_bases"] = [item for item in knowledge_bases if isinstance(item, dict)]
-
-    documents = payload.get("documents")
-    if isinstance(documents, list):
-        store["documents"] = [item for item in documents if isinstance(item, dict)]
-
-    return store
-
-
-def _save_store_payload(payload: dict[str, Any]) -> None:
-    _write_json(STORE_PATH, payload)
-
-
-def _seed_builtin_documents(store: dict[str, Any]) -> bool:
+def _seed_builtin_documents() -> bool:
     if not DOCS_DIR.exists():
         return False
 
-    documents = store.setdefault("documents", [])
-    existing_keys = {
-        str(doc.get("source_key") or "")
-        for doc in documents
-        if isinstance(doc, dict)
-    }
+    conn = _connect_kb()
+    try:
+        existing_docs = _load_documents_for_kb(conn, BUILTIN_KB_ID)
+        existing_keys = {
+            str(doc.get("source_key") or "")
+            for doc in existing_docs
+        }
+    finally:
+        conn.close()
 
     added = False
     for path in DOCS_DIR.glob("*"):
@@ -341,28 +549,34 @@ def _seed_builtin_documents(store: dict[str, Any]) -> bool:
         chunks = _build_chunks(blocks, source_label=path.name, knowledge_base_id=BUILTIN_KB_ID, knowledge_base_name=BUILTIN_KB_NAME)
         doc_id = f"doc_{uuid4().hex}"
         now = _now()
-        documents.append(
-            {
-                "id": doc_id,
-                "source_key": source_key,
-                "knowledge_base_id": BUILTIN_KB_ID,
-                "knowledge_base_name": BUILTIN_KB_NAME,
-                "source_type": "seed",
-                "filename": path.name,
-                "mime_type": "text/markdown" if path.suffix.lower() == ".md" else "text/plain",
-                "title": path.name,
-                "summary": _summarize_text(text, 220),
-                "text": text,
-                "blocks": [block.__dict__ for block in blocks],
-                "chunks": chunks,
-                "created_at": now,
-                "updated_at": now,
-            }
-        )
+        conn = _connect_kb()
+        try:
+            conn.execute(
+                """INSERT INTO documents
+                   (id, knowledge_base_id, source_key, source_type, filename, mime_type,
+                    title, summary, text, blocks_json, chunks_json, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    doc_id,
+                    BUILTIN_KB_ID,
+                    source_key,
+                    "seed",
+                    path.name,
+                    "text/markdown" if path.suffix.lower() == ".md" else "text/plain",
+                    path.name,
+                    _summarize_text(text, 220),
+                    text,
+                    json.dumps([block.__dict__ for block in blocks], ensure_ascii=False),
+                    json.dumps(chunks, ensure_ascii=False),
+                    now,
+                    now,
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
         added = True
 
-    if added:
-        _save_store_payload(store)
     return added
 
 
@@ -728,39 +942,51 @@ def _normalize_knowledge_base_name(name: str) -> str:
     return " ".join(str(name or "").strip().split())
 
 
-def _find_knowledge_base(store: dict[str, Any], knowledge_base_id: str | None = None, knowledge_base_name: str | None = None) -> dict[str, Any] | None:
-    knowledge_bases = store.get("knowledge_bases", [])
-    if knowledge_base_id:
-        for knowledge_base in knowledge_bases:
-            if str(knowledge_base.get("id")) == knowledge_base_id:
-                return knowledge_base
-    if knowledge_base_name:
-        normalized_name = _normalize_knowledge_base_name(knowledge_base_name)
-        for knowledge_base in knowledge_bases:
-            if _normalize_knowledge_base_name(str(knowledge_base.get("name") or "")) == normalized_name:
-                return knowledge_base
+def _find_knowledge_base_in_db(knowledge_base_id: str | None = None, knowledge_base_name: str | None = None) -> dict[str, Any] | None:
+    conn = _connect_kb()
+    try:
+        if knowledge_base_id:
+            row = conn.execute("SELECT * FROM knowledge_bases WHERE id = ?", (knowledge_base_id,)).fetchone()
+            if row:
+                return dict(row)
+        if knowledge_base_name:
+            normalized_name = _normalize_knowledge_base_name(knowledge_base_name)
+            rows = conn.execute("SELECT * FROM knowledge_bases").fetchall()
+            for row in rows:
+                if _normalize_knowledge_base_name(str(row["name"] or "")) == normalized_name:
+                    return dict(row)
+    finally:
+        conn.close()
     return None
 
 
-def _create_knowledge_base(store: dict[str, Any], name: str) -> dict[str, Any]:
+def _create_knowledge_base_in_db(name: str) -> dict[str, Any]:
     normalized_name = _normalize_knowledge_base_name(name)
     if not normalized_name:
         raise ValueError("知识库名称不能为空")
 
-    existing = _find_knowledge_base(store, knowledge_base_name=normalized_name)
+    existing = _find_knowledge_base_in_db(knowledge_base_name=normalized_name)
     if existing:
         return existing
 
     now = _now()
-    knowledge_base = {
-        "id": f"kb_{uuid4().hex}",
+    kb_id = f"kb_{uuid4().hex}"
+    conn = _connect_kb()
+    try:
+        conn.execute(
+            "INSERT INTO knowledge_bases (id, name, kind, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (kb_id, normalized_name, "custom", now, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {
+        "id": kb_id,
         "name": normalized_name,
         "kind": "custom",
         "created_at": now,
         "updated_at": now,
     }
-    store.setdefault("knowledge_bases", []).append(knowledge_base)
-    return knowledge_base
 
 
 def _summarize_document_chunks(chunks: list[dict[str, Any]], limit: int = 3) -> list[dict[str, Any]]:
@@ -823,19 +1049,17 @@ def _document_to_index_chunk(document: dict[str, Any], chunk: dict[str, Any]) ->
     }
 
 
-def _list_documents(store: dict[str, Any]) -> list[dict[str, Any]]:
-    documents = store.get("documents", [])
-    result: list[dict[str, Any]] = []
-    for document in documents:
-        if not isinstance(document, dict):
-            continue
-        result.append(document)
-    return result
+def _list_documents_from_db() -> list[dict[str, Any]]:
+    conn = _connect_kb()
+    try:
+        return _load_documents(conn)
+    finally:
+        conn.close()
 
 
-def _materialize_chunks(store: dict[str, Any]) -> list[dict[str, Any]]:
+def _materialize_chunks_from_db() -> list[dict[str, Any]]:
     chunks: list[dict[str, Any]] = []
-    for document in _list_documents(store):
+    for document in _list_documents_from_db():
         document_chunks = document.get("chunks")
         if not isinstance(document_chunks, list):
             continue
@@ -846,19 +1070,27 @@ def _materialize_chunks(store: dict[str, Any]) -> list[dict[str, Any]]:
     return chunks
 
 
-def _knowledge_base_stats(store: dict[str, Any]) -> list[dict[str, Any]]:
-    docs = _list_documents(store)
+def _knowledge_base_stats_from_db() -> list[dict[str, Any]]:
+    conn = _connect_kb()
+    try:
+        kbs = _load_knowledge_bases(conn)
+        docs = _load_documents(conn)
+    finally:
+        conn.close()
+
     document_count_by_id: dict[str, int] = {}
     chunk_count_by_id: dict[str, int] = {}
     updated_at_by_id: dict[str, str] = {}
     for document in docs:
         kb_id = str(document.get("knowledge_base_id") or "")
         if not kb_id:
-          continue
+            continue
         document_count_by_id[kb_id] = document_count_by_id.get(kb_id, 0) + 1
         chunks = document.get("chunks")
         if isinstance(chunks, list):
-            chunk_count_by_id[kb_id] = chunk_count_by_id.get(kb_id, 0) + len([chunk for chunk in chunks if isinstance(chunk, dict)])
+            chunk_count_by_id[kb_id] = chunk_count_by_id.get(kb_id, 0) + len(
+                [chunk for chunk in chunks if isinstance(chunk, dict)]
+            )
         updated_at = str(document.get("updated_at") or document.get("created_at") or "")
         if updated_at:
             current = updated_at_by_id.get(kb_id, "")
@@ -866,19 +1098,17 @@ def _knowledge_base_stats(store: dict[str, Any]) -> list[dict[str, Any]]:
                 updated_at_by_id[kb_id] = updated_at
 
     stats: list[dict[str, Any]] = []
-    for knowledge_base in store.get("knowledge_bases", []):
-        if not isinstance(knowledge_base, dict):
-            continue
-        kb_id = str(knowledge_base.get("id") or "")
+    for kb in kbs:
+        kb_id = str(kb.get("id") or "")
         if not kb_id:
             continue
         stats.append(
             {
                 "id": kb_id,
-                "name": str(knowledge_base.get("name") or ""),
-                "kind": str(knowledge_base.get("kind") or "custom"),
-                "created_at": str(knowledge_base.get("created_at") or ""),
-                "updated_at": updated_at_by_id.get(kb_id, str(knowledge_base.get("updated_at") or "")),
+                "name": str(kb.get("name") or ""),
+                "kind": str(kb.get("kind") or "custom"),
+                "created_at": str(kb.get("created_at") or ""),
+                "updated_at": updated_at_by_id.get(kb_id, str(kb.get("updated_at") or "")),
                 "document_count": document_count_by_id.get(kb_id, 0),
                 "chunk_count": chunk_count_by_id.get(kb_id, 0),
             }
@@ -888,41 +1118,23 @@ def _knowledge_base_stats(store: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def ensure_initialized() -> None:
-    global _INITIALIZED
-    if _INITIALIZED:
-        return
-
-    with _LOCK:
-        if _INITIALIZED:
-            return
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        store = _load_store_payload()
-        builtins_added = _seed_builtin_documents(store)
-        if builtins_added or not STORE_PATH.exists():
-            _save_store_payload(store)
-        _INITIALIZED = True
-        if builtins_added or not INDEX_JSON_PATH.exists() or not INDEX_META_PATH.exists():
-            rebuild_artifacts()
+    _ensure_kb_initialized()
 
 
 def list_knowledge_bases() -> list[dict[str, Any]]:
     ensure_initialized()
     with _LOCK:
-        store = _load_store_payload()
-        if _seed_builtin_documents(store):
-            _save_store_payload(store)
-        return _knowledge_base_stats(store)
+        _seed_builtin_documents()
+        return _knowledge_base_stats_from_db()
 
 
 def get_knowledge_base(knowledge_base_id: str) -> dict[str, Any] | None:
     ensure_initialized()
     with _LOCK:
-        store = _load_store_payload()
-        if _seed_builtin_documents(store):
-            _save_store_payload(store)
-        for knowledge_base in _knowledge_base_stats(store):
-            if knowledge_base["id"] == knowledge_base_id:
-                return knowledge_base
+        _seed_builtin_documents()
+        for kb in _knowledge_base_stats_from_db():
+            if kb["id"] == knowledge_base_id:
+                return kb
         return None
 
 
@@ -933,42 +1145,46 @@ def rename_knowledge_base(knowledge_base_id: str, name: str) -> dict[str, Any]:
         if not normalized_name:
             raise ValueError("知识库名称不能为空")
 
-        store = _load_store_payload()
-        if _seed_builtin_documents(store):
-            _save_store_payload(store)
-
-        knowledge_base = _find_knowledge_base(store, knowledge_base_id=knowledge_base_id)
-        if not knowledge_base:
+        kb = _find_knowledge_base_in_db(knowledge_base_id=knowledge_base_id)
+        if not kb:
             raise ValueError("知识库不存在")
 
-        existing = _find_knowledge_base(store, knowledge_base_name=normalized_name)
+        existing = _find_knowledge_base_in_db(knowledge_base_name=normalized_name)
         if existing and str(existing.get("id") or "") != knowledge_base_id:
             raise ValueError("同名知识库已存在")
 
         now = _now()
-        old_name = str(knowledge_base.get("name") or "")
-        knowledge_base["name"] = normalized_name
-        knowledge_base["updated_at"] = now
+        old_name = str(kb.get("name") or "")
+        conn = _connect_kb()
+        try:
+            conn.execute(
+                "UPDATE knowledge_bases SET name = ?, updated_at = ? WHERE id = ?",
+                (normalized_name, now, knowledge_base_id),
+            )
+            # 更新关联文档的 chunks 中的知识库名称
+            docs = _load_documents_for_kb(conn, knowledge_base_id)
+            for doc in docs:
+                doc["updated_at"] = now
+                chunks = doc.get("chunks")
+                if isinstance(chunks, list):
+                    for chunk in chunks:
+                        if isinstance(chunk, dict):
+                            chunk["knowledge_base_name"] = normalized_name
+                conn.execute(
+                    "UPDATE documents SET updated_at = ?, chunks_json = ? WHERE id = ?",
+                    (now, json.dumps(chunks, ensure_ascii=False), str(doc.get("id") or "")),
+                )
+            conn.commit()
+        finally:
+            conn.close()
 
-        for document in _list_documents(store):
-            if str(document.get("knowledge_base_id") or "") != knowledge_base_id:
-                continue
-            document["knowledge_base_name"] = normalized_name
-            document["updated_at"] = now
-            chunks = document.get("chunks")
-            if isinstance(chunks, list):
-                for chunk in chunks:
-                    if isinstance(chunk, dict):
-                        chunk["knowledge_base_name"] = normalized_name
-
-        _save_store_payload(store)
         rebuild_artifacts()
         return {
             "knowledge_base": {
                 "id": knowledge_base_id,
                 "name": normalized_name,
                 "old_name": old_name,
-                "kind": str(knowledge_base.get("kind") or "custom"),
+                "kind": str(kb.get("kind") or "custom"),
             },
             "knowledge_bases": list_knowledge_bases(),
         }
@@ -977,36 +1193,25 @@ def rename_knowledge_base(knowledge_base_id: str, name: str) -> dict[str, Any]:
 def delete_knowledge_base(knowledge_base_id: str) -> dict[str, Any]:
     ensure_initialized()
     with _LOCK:
-        store = _load_store_payload()
-        if _seed_builtin_documents(store):
-            _save_store_payload(store)
-
-        knowledge_base = _find_knowledge_base(store, knowledge_base_id=knowledge_base_id)
-        if not knowledge_base:
+        kb = _find_knowledge_base_in_db(knowledge_base_id=knowledge_base_id)
+        if not kb:
             raise ValueError("知识库不存在")
-        if str(knowledge_base.get("kind") or "") == "builtin" or str(knowledge_base.get("id") or "") == BUILTIN_KB_ID:
+        if str(kb.get("kind") or "") == "builtin" or str(kb.get("id") or "") == BUILTIN_KB_ID:
             raise ValueError("内置知识库不能删除")
 
-        documents = store.get("documents", [])
-        kept_documents = []
-        deleted_document_count = 0
-        if isinstance(documents, list):
-            for document in documents:
-                if not isinstance(document, dict):
-                    kept_documents.append(document)
-                    continue
-                if str(document.get("knowledge_base_id") or "") == knowledge_base_id:
-                    deleted_document_count += 1
-                    continue
-                kept_documents.append(document)
-        store["documents"] = kept_documents
-        store["knowledge_bases"] = [
-            item
-            for item in store.get("knowledge_bases", [])
-            if isinstance(item, dict) and str(item.get("id") or "") != knowledge_base_id
-        ]
+        conn = _connect_kb()
+        try:
+            deleted_docs = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM documents WHERE knowledge_base_id = ?",
+                (knowledge_base_id,),
+            ).fetchone()
+            deleted_document_count = int(deleted_docs["cnt"]) if deleted_docs else 0
+            conn.execute("DELETE FROM documents WHERE knowledge_base_id = ?", (knowledge_base_id,))
+            conn.execute("DELETE FROM knowledge_bases WHERE id = ?", (knowledge_base_id,))
+            conn.commit()
+        finally:
+            conn.close()
 
-        _save_store_payload(store)
         rebuild_artifacts()
         return {
             "deleted": True,
@@ -1057,16 +1262,13 @@ def _document_summary(document: dict[str, Any]) -> dict[str, Any]:
 def list_documents_for_knowledge_base(knowledge_base_id: str) -> list[dict[str, Any]]:
     ensure_initialized()
     with _LOCK:
-        store = _load_store_payload()
-        if _seed_builtin_documents(store):
-            _save_store_payload(store)
-
-        documents = []
-        for document in _list_documents(store):
-            if str(document.get("knowledge_base_id") or "") != knowledge_base_id:
-                continue
-            documents.append(_document_summary(document))
-
+        _seed_builtin_documents()
+        conn = _connect_kb()
+        try:
+            docs = _load_documents_for_kb(conn, knowledge_base_id)
+        finally:
+            conn.close()
+        documents = [_document_summary(doc) for doc in docs]
         documents.sort(key=lambda item: (item.get("updated_at") or item.get("created_at") or "", item.get("title") or ""), reverse=True)
         return documents
 
@@ -1074,39 +1276,38 @@ def list_documents_for_knowledge_base(knowledge_base_id: str) -> list[dict[str, 
 def get_document_detail(document_id: str) -> dict[str, Any] | None:
     ensure_initialized()
     with _LOCK:
-        store = _load_store_payload()
-        if _seed_builtin_documents(store):
-            _save_store_payload(store)
-
-        for document in _list_documents(store):
-            if str(document.get("id") or "") != document_id:
-                continue
-            detail = _document_summary(document)
-            detail.update(
-                {
-                    "text": str(document.get("text") or ""),
-                    "blocks": [
-                        {
-                            "text": str(block.get("text") or ""),
-                            "location": str(block.get("location") or ""),
-                        }
-                        for block in document.get("blocks", [])
-                        if isinstance(block, dict)
-                    ],
-                    "chunks": [
-                        {
-                            "source": str(chunk.get("source") or document.get("filename") or ""),
-                            "text": str(chunk.get("text") or ""),
-                            "location": str(chunk.get("location") or ""),
-                            "chunk_index": int(chunk.get("chunk_index") or index),
-                        }
-                        for index, chunk in enumerate(document.get("chunks", []))
-                        if isinstance(chunk, dict)
-                    ],
-                }
-            )
-            return detail
-        return None
+        conn = _connect_kb()
+        try:
+            document = _load_document_by_id(conn, document_id)
+        finally:
+            conn.close()
+        if not document:
+            return None
+        detail = _document_summary(document)
+        detail.update(
+            {
+                "text": str(document.get("text") or ""),
+                "blocks": [
+                    {
+                        "text": str(block.get("text") or ""),
+                        "location": str(block.get("location") or ""),
+                    }
+                    for block in document.get("blocks", [])
+                    if isinstance(block, dict)
+                ],
+                "chunks": [
+                    {
+                        "source": str(chunk.get("source") or document.get("filename") or ""),
+                        "text": str(chunk.get("text") or ""),
+                        "location": str(chunk.get("location") or ""),
+                        "chunk_index": int(chunk.get("chunk_index") or index),
+                    }
+                    for index, chunk in enumerate(document.get("chunks", []))
+                    if isinstance(chunk, dict)
+                ],
+            }
+        )
+        return detail
 
 
 def rename_document(document_id: str, title: str) -> dict[str, Any]:
@@ -1116,23 +1317,25 @@ def rename_document(document_id: str, title: str) -> dict[str, Any]:
         if not normalized_title:
             raise ValueError("文档标题不能为空")
 
-        store = _load_store_payload()
-        if _seed_builtin_documents(store):
-            _save_store_payload(store)
+        conn = _connect_kb()
+        try:
+            doc = _load_document_by_id(conn, document_id)
+            if not doc:
+                raise ValueError("文档不存在")
+            now = _now()
+            conn.execute(
+                "UPDATE documents SET title = ?, updated_at = ? WHERE id = ?",
+                (normalized_title, now, document_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
 
-        for document in _list_documents(store):
-            if str(document.get("id") or "") != document_id:
-                continue
-            document["title"] = normalized_title
-            document["updated_at"] = _now()
-            _save_store_payload(store)
-            rebuild_artifacts()
-            return {
-                "document": _document_summary(document),
-                "knowledge_bases": list_knowledge_bases(),
-            }
-
-        raise ValueError("文档不存在")
+        rebuild_artifacts()
+        return {
+            "document": get_document_detail(document_id),
+            "knowledge_bases": list_knowledge_bases(),
+        }
 
 
 def update_document(
@@ -1143,19 +1346,24 @@ def update_document(
 ) -> dict[str, Any]:
     ensure_initialized()
     with _LOCK:
-        store = _load_store_payload()
-        if _seed_builtin_documents(store):
-            _save_store_payload(store)
+        conn = _connect_kb()
+        try:
+            doc = _load_document_by_id(conn, document_id)
+            if not doc:
+                raise ValueError("文档不存在")
 
-        for document in _list_documents(store):
-            if str(document.get("id") or "") != document_id:
-                continue
+            now = _now()
+            kb_id = str(doc.get("knowledge_base_id") or "")
+            kb_name = str(doc.get("knowledge_base_name") or "")
 
-            normalized_title = _normalize_text(title) if title is not None else ""
             if title is not None:
+                normalized_title = _normalize_text(title)
                 if not normalized_title:
                     raise ValueError("文档标题不能为空")
-                document["title"] = normalized_title
+                conn.execute(
+                    "UPDATE documents SET title = ?, updated_at = ? WHERE id = ?",
+                    (normalized_title, now, document_id),
+                )
 
             if text is not None:
                 normalized_text = str(text or "").strip()
@@ -1169,78 +1377,65 @@ def update_document(
                 if not blocks:
                     raise ValueError("文档正文不能为空")
 
-                source_label = str(document.get("filename") or document.get("title") or "文档")
-                knowledge_base_id = str(document.get("knowledge_base_id") or "")
-                knowledge_base_name = str(document.get("knowledge_base_name") or "")
+                source_label = str(doc.get("filename") or doc.get("title") or "文档")
                 chunks = _build_chunks(
                     blocks,
                     source_label=source_label,
-                    knowledge_base_id=knowledge_base_id,
-                    knowledge_base_name=knowledge_base_name,
+                    knowledge_base_id=kb_id,
+                    knowledge_base_name=kb_name,
                 )
 
-                document["text"] = normalized_text
-                document["summary"] = _summarize_text(normalized_text, 240)
-                document["blocks"] = [block.__dict__ for block in blocks]
-                document["chunks"] = chunks
+                conn.execute(
+                    """UPDATE documents SET text = ?, summary = ?, blocks_json = ?, chunks_json = ?, updated_at = ?
+                       WHERE id = ?""",
+                    (
+                        normalized_text,
+                        _summarize_text(normalized_text, 240),
+                        json.dumps([block.__dict__ for block in blocks], ensure_ascii=False),
+                        json.dumps(chunks, ensure_ascii=False),
+                        now,
+                        document_id,
+                    ),
+                )
 
             if title is None and text is None:
                 raise ValueError("没有可更新的内容")
 
-            document["updated_at"] = _now()
-            knowledge_base = _find_knowledge_base(store, knowledge_base_id=str(document.get("knowledge_base_id") or ""))
-            if knowledge_base:
-                knowledge_base["updated_at"] = document["updated_at"]
+            conn.execute("UPDATE knowledge_bases SET updated_at = ? WHERE id = ?", (now, kb_id))
+            conn.commit()
+        finally:
+            conn.close()
 
-            _save_store_payload(store)
-            rebuild_artifacts()
-            return {
-                "document": get_document_detail(document_id),
-                "knowledge_bases": list_knowledge_bases(),
-            }
-
-        raise ValueError("文档不存在")
+        rebuild_artifacts()
+        return {
+            "document": get_document_detail(document_id),
+            "knowledge_bases": list_knowledge_bases(),
+        }
 
 
 def delete_document(document_id: str) -> dict[str, Any]:
     ensure_initialized()
     with _LOCK:
-        store = _load_store_payload()
-        if _seed_builtin_documents(store):
-            _save_store_payload(store)
+        conn = _connect_kb()
+        try:
+            doc = _load_document_by_id(conn, document_id)
+            if not doc:
+                raise ValueError("文档不存在")
+            if str(doc.get("source_type") or "") == "seed":
+                raise ValueError("内置文档不能删除")
 
-        documents = store.get("documents", [])
-        if not isinstance(documents, list):
-            raise ValueError("文档不存在")
+            kb_id = str(doc.get("knowledge_base_id") or "")
+            conn.execute("DELETE FROM documents WHERE id = ?", (document_id,))
+            conn.execute("UPDATE knowledge_bases SET updated_at = ? WHERE id = ?", (_now(), kb_id))
+            conn.commit()
+        finally:
+            conn.close()
 
-        deleted_document: dict[str, Any] | None = None
-        kept_documents = []
-        for document in documents:
-            if not isinstance(document, dict):
-                kept_documents.append(document)
-                continue
-            if str(document.get("id") or "") == document_id:
-                deleted_document = document
-                continue
-            kept_documents.append(document)
-
-        if not deleted_document:
-            raise ValueError("文档不存在")
-        if str(deleted_document.get("source_type") or "") == "seed":
-            raise ValueError("内置文档不能删除")
-
-        knowledge_base_id = str(deleted_document.get("knowledge_base_id") or "")
-        store["documents"] = kept_documents
-        knowledge_base = _find_knowledge_base(store, knowledge_base_id=knowledge_base_id)
-        if knowledge_base:
-            knowledge_base["updated_at"] = _now()
-
-        _save_store_payload(store)
         rebuild_artifacts()
         return {
             "deleted": True,
             "document_id": document_id,
-            "knowledge_base_id": knowledge_base_id,
+            "knowledge_base_id": kb_id,
             "knowledge_bases": list_knowledge_bases(),
         }
 
@@ -1297,9 +1492,7 @@ def confirm_upload_draft(
         if draft.get("confirmed_at"):
             raise ValueError("draft already confirmed")
 
-        store = _load_store_payload()
-        if _seed_builtin_documents(store):
-            pass
+        _seed_builtin_documents()
 
         draft_target = draft.get("target", {}) if isinstance(draft.get("target"), dict) else {}
         request_target_name = _normalize_knowledge_base_name(knowledge_base_name or "")
@@ -1312,40 +1505,25 @@ def confirm_upload_draft(
 
         knowledge_base = None
         if target_id:
-            knowledge_base = _find_knowledge_base(store, knowledge_base_id=target_id)
+            knowledge_base = _find_knowledge_base_in_db(knowledge_base_id=target_id)
             if not knowledge_base:
                 raise ValueError("目标知识库不存在")
         elif target_name:
-            knowledge_base = _create_knowledge_base(store, target_name)
+            knowledge_base = _create_knowledge_base_in_db(target_name)
         else:
-            knowledge_base = _find_knowledge_base(store, knowledge_base_id=BUILTIN_KB_ID)
+            knowledge_base = _find_knowledge_base_in_db(knowledge_base_id=BUILTIN_KB_ID)
             if not knowledge_base:
-                knowledge_base = _create_knowledge_base(store, BUILTIN_KB_NAME)
+                knowledge_base = _create_knowledge_base_in_db(BUILTIN_KB_NAME)
 
         now = _now()
         document_id = f"doc_{uuid4().hex}"
-        document = {
-            "id": document_id,
-            "source_key": f"upload:{draft_id}",
-            "knowledge_base_id": knowledge_base["id"],
-            "knowledge_base_name": knowledge_base["name"],
-            "source_type": "upload",
-            "filename": str(draft.get("file_name") or "upload"),
-            "mime_type": str(draft.get("mime_type") or ""),
-            "title": str(draft.get("file_name") or "upload"),
-            "summary": str(draft.get("summary") or ""),
-            "text": str(draft.get("extracted_text") or ""),
-            "blocks": draft.get("blocks") if isinstance(draft.get("blocks"), list) else [],
-            "chunks": [],
-            "created_at": now,
-            "updated_at": now,
-        }
-
+        filename = str(draft.get("file_name") or "upload")
         chunks = draft.get("chunks")
+        normalized_chunks: list[dict[str, Any]] = []
         if isinstance(chunks, list):
-            document["chunks"] = [
+            normalized_chunks = [
                 {
-                    "source": str(chunk.get("source") or document["filename"]),
+                    "source": str(chunk.get("source") or filename),
                     "knowledge_base_id": knowledge_base["id"],
                     "knowledge_base_name": knowledge_base["name"],
                     "text": str(chunk.get("text") or ""),
@@ -1356,9 +1534,34 @@ def confirm_upload_draft(
                 if isinstance(chunk, dict) and str(chunk.get("text") or "").strip()
             ]
 
-        store.setdefault("documents", []).append(document)
-        knowledge_base["updated_at"] = now
-        _save_store_payload(store)
+        conn = _connect_kb()
+        try:
+            conn.execute(
+                """INSERT INTO documents
+                   (id, knowledge_base_id, source_key, source_type, filename, mime_type,
+                    title, summary, text, blocks_json, chunks_json, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    document_id,
+                    knowledge_base["id"],
+                    f"upload:{draft_id}",
+                    "upload",
+                    filename,
+                    str(draft.get("mime_type") or ""),
+                    filename,
+                    str(draft.get("summary") or ""),
+                    str(draft.get("extracted_text") or ""),
+                    json.dumps(draft.get("blocks") if isinstance(draft.get("blocks"), list) else [], ensure_ascii=False),
+                    json.dumps(normalized_chunks, ensure_ascii=False),
+                    now,
+                    now,
+                ),
+            )
+            conn.execute("UPDATE knowledge_bases SET updated_at = ? WHERE id = ?", (now, knowledge_base["id"]))
+            conn.commit()
+        finally:
+            conn.close()
+
         rebuild_artifacts()
 
         draft["confirmed_at"] = now
@@ -1368,9 +1571,9 @@ def confirm_upload_draft(
             "draft_id": draft_id,
             "document": {
                 "id": document_id,
-                "filename": document["filename"],
-                "summary": document["summary"],
-                "chunk_count": len(document["chunks"]),
+                "filename": filename,
+                "summary": str(draft.get("summary") or ""),
+                "chunk_count": len(normalized_chunks),
                 "skipped_block_count": int(draft.get("skipped_block_count") or 0),
                 "text_quality": float(draft.get("text_quality") or 0.0),
                 "ocr_available": bool(draft.get("ocr_available")),
@@ -1405,15 +1608,14 @@ def cancel_upload_draft(*, draft_id: str) -> dict[str, Any]:
 def rebuild_artifacts() -> dict[str, Any]:
     ensure_initialized()
     with _LOCK:
-        store = _load_store_payload()
-        chunks = _materialize_chunks(store)
+        chunks = _materialize_chunks_from_db()
         legacy_payload = chunks
         _write_json(INDEX_JSON_PATH, legacy_payload)
 
         model_name = resolve_model_name(DEFAULT_EMBEDDING_MODEL_NAME)
         meta_payload = {
             "model_name": model_name,
-            "knowledge_bases": _knowledge_base_stats(store),
+            "knowledge_bases": _knowledge_base_stats_from_db(),
             "chunks": chunks,
         }
         _write_json(INDEX_META_PATH, meta_payload)
@@ -1436,7 +1638,7 @@ def rebuild_artifacts() -> dict[str, Any]:
         return {
             "model_name": model_name,
             "chunk_count": len(chunks),
-            "knowledge_bases": _knowledge_base_stats(store),
+            "knowledge_bases": _knowledge_base_stats_from_db(),
             "faiss_status": faiss_status,
         }
 

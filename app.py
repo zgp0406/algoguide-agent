@@ -10,6 +10,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from agent.chain import ChatRequest, chat, get_api_status, get_session_detail, list_recent_sessions, stream_chat
+from agent.agent_loop import agent_chat
+from agent.diagnostics import run_diagnostics
 from agent.sessions import delete_session, update_session_title
 from knowledge.library import (
     BUILTIN_KB_ID,
@@ -102,6 +104,12 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/api/diagnostics")
+def diagnostics() -> dict[str, object]:
+    """返回系统诊断信息，方便部署/演示前自检。"""
+    return run_diagnostics()
+
+
 @app.post("/api/chat")
 def chat_api(request: ChatRequest) -> dict[str, object]:
     result = chat(request)
@@ -112,6 +120,19 @@ def chat_api(request: ChatRequest) -> dict[str, object]:
 def chat_stream_api(request: ChatRequest) -> StreamingResponse:
     return StreamingResponse(
         stream_chat(request),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.post("/api/chat/agent")
+def chat_agent_api(request: ChatRequest) -> StreamingResponse:
+    """Agent 模式：LLM 自主决定何时查知识库、何时执行代码、何时直接回答。"""
+    return StreamingResponse(
+        agent_chat(request),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
