@@ -25,3 +25,6 @@ knowledge/index_meta.json
 # Optional OS files
 .DS_Store
 Thumbs.db
+
+# Temp / presentation artifacts
+tmp/

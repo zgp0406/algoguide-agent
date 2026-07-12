@@ -109,7 +109,10 @@ input.addEventListener("input", () => {
 
 async function submitStreamingChat(text) {
   const controller = new AbortController();
-  const response = await fetch("/api/chat/stream", {
+  const agentToggle = document.getElementById("agent-mode-toggle");
+  const useAgent = agentToggle && agentToggle.checked;
+  const endpoint = useAgent ? "/api/chat/agent" : "/api/chat/stream";
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message: text, history, session_id: currentSessionId }),

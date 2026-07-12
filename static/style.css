@@ -2012,6 +2012,30 @@ textarea::placeholder {
   flex-wrap: wrap;
 }
 
+.agent-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 10px;
+  border-radius: 99px;
+  border: 1px solid var(--border, #e5ebf5);
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.agent-toggle-label:has(input:checked) {
+  background: rgba(20, 99, 243, 0.08);
+  border-color: var(--accent, #1463f3);
+  color: var(--accent, #1463f3);
+}
+
+.agent-toggle-label input {
+  accent-color: var(--accent, #1463f3);
+}
+
 .helper-text {
   margin: 0;
   color: var(--muted);

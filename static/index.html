@@ -77,8 +77,12 @@
               <label class="sr-only" for="input">请输入问题</label>
               <textarea id="input" rows="1" placeholder="输入算法问题，或让它解释一道题..."></textarea>
               <div class="composer-row">
+                <label class="agent-toggle-label" title="Agent 模式：AI 自主决定何时搜索知识库、执行代码">
+                  <input type="checkbox" id="agent-mode-toggle" />
+                  <span>Agent</span>
+                </label>
                 <p class="helper-text">Enter 发送，Shift + Enter 换行</p>
-                <button type="submit">发送</button>
+                <button type="submit" id="submit-btn">发送</button>
               </div>
             </form>
           </footer>
