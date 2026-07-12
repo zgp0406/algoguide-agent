@@ -2,14 +2,14 @@
 
 AlgoGuide Agent 是一个面向算法学习场景的本地 AI Agent。项目基于 FastAPI、静态前端、本地知识库、向量检索和 OpenAI 兼容模型接口，提供算法问题问答、知识库检索、来源引用、流式输出和会话持久化能力。
 
-v0.2 新增 **Agent 模式**：LLM 可自主决定何时调用工具（搜索知识库、执行 Python 代码、查看文档详情），支持多步推理循环和可观测的思考过程。
+v0.2 新增 **Agent 模式**：LLM 可自主决定何时调用 4 个工具（搜索知识库、执行 Python 代码、对比算法、查看文档详情），支持 ReAct 多步推理循环、流式思考过程和可观测的工具调用链路。前端支持一键切换 Agent/普通模式，生成中可随时停止。
 
 项目目标不是构建一个普通聊天页面，而是提供一条完整的 Agent 问答链路：用户提出问题后，Agent 自主决策是否需要检索知识库、是否需要执行代码验证，再基于结果生成回答，并将思考过程、工具调用和来源证据返回给前端展示。
 
 ## 功能特性
 
 - **算法问答**：支持围绕算法概念、题解思路、复杂度分析和代码实现进行提问。
-- **Agent 模式**（新增）：LLM 自主决定何时调用 `search_knowledge`（搜索知识库）、`run_python`（执行代码）、`get_document_detail`（查看文档），支持 ReAct 多步推理循环。
+- **Agent 模式**：LLM 自主决定何时调用 `search_knowledge`（搜索知识库）、`run_python`（执行代码）、`compare_algorithms`（对比算法）、`get_document_detail`（查看文档），支持 ReAct 多步推理循环和流式 tool_calls。前端 Agent 开关一键切换，生成中可随时停止。
 - **RAG 检索增强**：使用 `sentence-transformers` 生成文本向量，并通过 `FAISS` 进行本地相似度检索。
 - **来源引用**：回答结果包含命中的文档来源、片段摘要、位置和相关度信息。
 - **流式输出**：支持 `/api/chat/stream` 和 `/api/chat/agent` 以 Server-Sent Events 形式返回增量回答。Agent 模式额外输出 `think`、`tool_call`、`tool_result` 事件。
@@ -27,7 +27,7 @@ v0.2 新增 **Agent 模式**：LLM 可自主决定何时调用工具（搜索知
 - 后端：`FastAPI`、`Pydantic`、`Uvicorn`
 - 生成编排：原生 `urllib` 或 `LangChain LCEL`
 - Agent 框架：自研 ReAct Agent 循环（`agent/agent_loop.py`）
-- 工具系统：`search_knowledge` / `run_python` / `get_document_detail`
+- 工具系统：`search_knowledge` / `run_python` / `compare_algorithms` / `get_document_detail`
 - 前端：原生 `HTML`、`CSS`、`JavaScript`（模块化拆分到 `static/js/`）
 - 存储：`SQLite`（会话 + 知识库元数据）
 - 检索：`sentence-transformers`、`FAISS`
@@ -392,5 +392,6 @@ python -m unittest discover -s tests -v
 
 ## 版本历史
 
-- **v0.2.0**：新增 Agent 模式（ReAct 循环 + 3 个工具 + function calling）、知识库 SQLite 迁移、前端模块化拆分、系统诊断接口、API 端到端测试。
+- **v0.2.1**：流式 tool_calls（Agent 思考过程实时可见）、LangChain 后端支持 function calling、停止生成按钮、新增 `compare_algorithms` 工具、Agent 个性化记忆。
+- **v0.2.0**：Agent 模式（ReAct 循环 + 3 工具 + function calling）、知识库 SQLite 迁移、前端模块化拆分（6 模块）、系统诊断接口、API 端到端测试（18+12 测试）。
 - **v0.1.0**：初始版本，FastAPI + RAG + 流式输出 + 会话持久化 + 知识库管理。
