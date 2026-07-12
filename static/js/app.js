@@ -107,8 +107,11 @@ input.addEventListener("input", () => {
   input.style.height = `${Math.min(input.scrollHeight, 220)}px`;
 });
 
+let _activeAbortController = null;
+
 async function submitStreamingChat(text) {
   const controller = new AbortController();
+  _activeAbortController = controller;
   const agentToggle = document.getElementById("agent-mode-toggle");
   const useAgent = agentToggle && agentToggle.checked;
   const endpoint = useAgent ? "/api/chat/agent" : "/api/chat/stream";
@@ -367,11 +370,12 @@ form.addEventListener("submit", async (event) => {
   input.value = "";
   input.style.height = "auto";
 
-  // 先把按钮锁住，并把状态切到“发送中”，避免用户以为页面没有反应。
-  setChatPhase("发送中...");
+  // 先把按钮锁住，并把状态切到”发送中”，避免用户以为页面没有反应。
+  setChatPhase(“发送中...”);
   const typing = appendTyping();
   isSubmitting = true;
   setComposerBusy(true);
+  toggleStopButton(true);
 
   try {
     if (typing.isConnected) {
@@ -385,50 +389,56 @@ form.addEventListener("submit", async (event) => {
     if (result.session) {
       upsertRecentSession(result.session);
     }
-    const assistantText = assistantMessage.querySelector(".message-content")?.textContent || "";
-    history.push({ role: "assistant", content: assistantText });
+    const assistantText = assistantMessage.querySelector(“.message-content”)?.textContent || “”;
+    history.push({ role: “assistant”, content: assistantText });
     updateLearningProgress(currentSessionSummary(), history);
   } catch (error) {
-    if (typing.isConnected) {
-      typing.remove();
-    }
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, history, session_id: currentSessionId }),
-      });
-      const data = await response.json();
-      const assistantMessage = appendMessage("assistant", data.answer, {
-        sources: data.sources || [],
-        evidence: Array.isArray(data.evidence) ? data.evidence : [],
-        usedRag: Boolean(data.used_rag),
-        knowledgeBase: String(data.knowledge_base || ""),
-        ragConfidence: Number(data.rag_confidence || 0),
-        retrievalMode: String(data.retrieval_mode || "none"),
-        lowConfidenceReason: String(data.low_confidence_reason || ""),
-      });
-      if (data.error || data.error_type || data.error_message) {
-        appendErrorMeta(
-          assistantMessage,
-          data.error || "",
-          data.error_type || "",
-          data.error_message || ""
-        );
+    if (error?.name === “AbortError”) {
+      appendMessage(“assistant”, “⏹ 已停止生成。”);
+      const assistantText = “⏹ 已停止生成。”;
+      history.push({ role: “assistant”, content: assistantText });
+    } else {
+      if (typing.isConnected) {
+        typing.remove();
       }
-      if (data.session_id) {
-        currentSessionId = data.session_id;
-      }
-      if (data.session) {
-        upsertRecentSession(data.session);
-      }
-      history.push({
-        role: "assistant",
-        content: assistantMessage.querySelector(".message-content")?.textContent || data.answer,
-      });
-      updateLearningProgress(currentSessionSummary(), history);
-    } catch (fallbackError) {
+      try {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text, history, session_id: currentSessionId }),
+        });
+        const data = await response.json();
+        const assistantMessage = appendMessage("assistant", data.answer, {
+          sources: data.sources || [],
+          evidence: Array.isArray(data.evidence) ? data.evidence : [],
+          usedRag: Boolean(data.used_rag),
+          knowledgeBase: String(data.knowledge_base || ""),
+          ragConfidence: Number(data.rag_confidence || 0),
+          retrievalMode: String(data.retrieval_mode || "none"),
+          lowConfidenceReason: String(data.low_confidence_reason || ""),
+        });
+        if (data.error || data.error_type || data.error_message) {
+          appendErrorMeta(
+            assistantMessage,
+            data.error || "",
+            data.error_type || "",
+            data.error_message || ""
+          );
+        }
+        if (data.session_id) {
+          currentSessionId = data.session_id;
+        }
+        if (data.session) {
+          upsertRecentSession(data.session);
+        }
+        history.push({
+          role: "assistant",
+          content: assistantMessage.querySelector(".message-content")?.textContent || data.answer,
+        });
+        updateLearningProgress(currentSessionSummary(), history);
+      } catch (fallbackError) {
       appendMessage("assistant", `请求失败：${fallbackError}`);
+    }
     }
   } finally {
     if (typing.isConnected) {
@@ -437,5 +447,21 @@ form.addEventListener("submit", async (event) => {
     isSubmitting = false;
     setComposerBusy(false);
     setChatPhase("");
+    toggleStopButton(false);
+    _activeAbortController = null;
+  }
+});
+
+function toggleStopButton(show) {
+  const stopBtn = document.getElementById("stop-btn");
+  const submitBtn = document.getElementById("submit-btn");
+  if (stopBtn) stopBtn.hidden = !show;
+  if (submitBtn) submitBtn.hidden = show;
+}
+
+document.getElementById("stop-btn")?.addEventListener("click", () => {
+  if (_activeAbortController) {
+    _activeAbortController.abort();
+    _activeAbortController = null;
   }
 });

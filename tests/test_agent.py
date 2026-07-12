@@ -12,7 +12,7 @@ from agent.tools import execute_tool, get_tool_definitions
 class ToolDefinitionTests(unittest.TestCase):
     def test_all_tools_have_required_fields(self) -> None:
         tools = get_tool_definitions()
-        self.assertGreaterEqual(len(tools), 3)
+        self.assertGreaterEqual(len(tools), 4)
         for tool in tools:
             self.assertEqual(tool["type"], "function")
             func = tool["function"]
@@ -69,6 +69,23 @@ class ToolExecutionTests(unittest.TestCase):
 
     def test_run_python_rejects_empty_code(self) -> None:
         result = execute_tool("run_python", {"code": ""})
+        self.assertIn("error", result)
+
+    def test_compare_algorithms_searches_both(self) -> None:
+        from agent.retriever import RetrievedChunk
+        with mock.patch("agent.tools.retrieve_with_scores") as mock_retrieve:
+            mock_retrieve.side_effect = [
+                [RetrievedChunk("kb1", "测试", "bfs.md", "BFS 使用队列。", "P1", 0.9, "hybrid")],
+                [RetrievedChunk("kb2", "测试", "dfs.md", "DFS 使用栈。", "P1", 0.85, "hybrid")],
+            ]
+            result = execute_tool("compare_algorithms", {"algorithm_a": "BFS", "algorithm_b": "DFS"})
+        self.assertIn("algorithm_a", result)
+        self.assertIn("algorithm_b", result)
+        self.assertEqual(result["algorithm_a"]["result_count"], 1)
+        self.assertEqual(result["algorithm_b"]["result_count"], 1)
+
+    def test_compare_algorithms_rejects_empty(self) -> None:
+        result = execute_tool("compare_algorithms", {"algorithm_a": "", "algorithm_b": ""})
         self.assertIn("error", result)
 
     def test_unknown_tool_returns_error(self) -> None:

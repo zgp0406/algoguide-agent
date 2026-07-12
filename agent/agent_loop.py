@@ -139,7 +139,7 @@ def agent_chat(request: ChatRequest) -> Iterator[bytes]:
     tools = get_tool_definitions()
     backend = create_backend()
 
-    # ── Agent 循环 ─────────────────────────────────────────────
+    # ── Agent 循环（流式）──────────────────────────────────────
     final_answer = ""
     tools_called: list[str] = []
     all_sources = list(sources)
@@ -150,60 +150,89 @@ def agent_chat(request: ChatRequest) -> Iterator[bytes]:
             yield _sse_event("think", {"text": f"正在思考第 {step + 1} 步..."})
 
             try:
-                response = backend.generate_with_tools(messages, tools)
+                stream = backend.stream_with_tools(messages, tools)
             except Exception as exc:
-                # LLM 调用失败——回退到预检索结果
                 log_event("agent.error", step=step, error=_error_text(exc))
                 break
 
-            if response.type == "text":
-                final_answer = response.content
-                for chunk in _chunk_text(final_answer):
-                    yield _sse_event("delta", {"text": chunk})
-                break
+            # 累积流式事件
+            stream_text = ""
+            tool_call_bufs: dict[int, dict[str, object]] = {}
+            has_tool_calls = False
+            stream_done = False
 
-            if response.type == "tool_calls":
-                # 将 assistant 的 tool_calls 消息加入历史
-                assistant_tc_msg: dict[str, object] = {
+            for event in stream:
+                etype = str(event.get("type") or "")
+
+                if etype == "delta":
+                    chunk = str(event.get("text") or "")
+                    stream_text += chunk
+                    # 流式 think 到前端
+                    yield _sse_event("think", {"text": stream_text[-120:]})
+
+                elif etype == "tool_call_start":
+                    has_tool_calls = True
+                    name = str(event.get("name") or "")
+                    yield _sse_event("think", {"text": f"调用工具: {name}"})
+
+                elif etype == "tool_call":
+                    idx = len(tool_call_bufs)
+                    tool_call_bufs[idx] = {
+                        "id": str(event.get("id") or ""),
+                        "name": str(event.get("name") or ""),
+                        "arguments": event.get("arguments", {}),
+                    }
+
+                elif etype == "done":
+                    stream_done = True
+
+            if has_tool_calls and tool_call_bufs:
+                # 构建 assistant tool_calls 消息
+                tc_list = []
+                for idx in sorted(tool_call_bufs):
+                    buf = tool_call_bufs[idx]
+                    tc_list.append({
+                        "id": str(buf["id"]),
+                        "type": "function",
+                        "function": {
+                            "name": str(buf["name"]),
+                            "arguments": json.dumps(buf["arguments"], ensure_ascii=False),
+                        },
+                    })
+                messages.append({
                     "role": "assistant",
-                    "content": None,
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {"name": tc.name, "arguments": json.dumps(tc.arguments, ensure_ascii=False)},
-                        }
-                        for tc in response.tool_calls
-                    ],
-                }
-                messages.append(assistant_tc_msg)
+                    "content": stream_text or None,
+                    "tool_calls": tc_list,
+                })
 
-                for tc in response.tool_calls:
-                    # 通知前端
+                for idx in sorted(tool_call_bufs):
+                    buf = tool_call_bufs[idx]
+                    tc_name = str(buf["name"])
+                    tc_args = buf["arguments"] if isinstance(buf["arguments"], dict) else {}
+                    tc_id = str(buf["id"])
+
                     yield _sse_event("tool_call", {
-                        "name": tc.name,
-                        "arguments": tc.arguments,
+                        "name": tc_name,
+                        "arguments": tc_args,
                         "step": step + 1,
                     })
 
-                    # 执行工具
                     tool_started = monotonic()
                     try:
-                        result = execute_tool(tc.name, tc.arguments)
+                        result = execute_tool(tc_name, tc_args)
                     except Exception as exc:
                         result = {"error": f"工具执行异常: {exc}"}
                     tool_elapsed_ms = round((monotonic() - tool_started) * 1000, 2)
 
                     yield _sse_event("tool_result", {
-                        "name": tc.name,
+                        "name": tc_name,
                         "result": result,
                         "elapsed_ms": tool_elapsed_ms,
                     })
 
-                    tools_called.append(tc.name)
+                    tools_called.append(tc_name)
 
-                    # 收集 search_knowledge 的额外来源
-                    if tc.name == "search_knowledge" and "results" in result:
+                    if tc_name == "search_knowledge" and "results" in result:
                         for r in result.get("results", []):
                             src = str(r.get("source", ""))
                             if src and src not in all_sources:
@@ -216,22 +245,31 @@ def agent_chat(request: ChatRequest) -> Iterator[bytes]:
                                 "score": r.get("score"),
                             })
 
-                    # 将 tool 结果加入消息历史
                     messages.append({
                         "role": "tool",
-                        "tool_call_id": tc.id,
+                        "tool_call_id": tc_id,
                         "content": json.dumps(result, ensure_ascii=False),
                     })
 
                     log_event(
                         "agent.tool_executed",
-                        tool_name=tc.name,
+                        tool_name=tc_name,
                         step=step + 1,
                         elapsed_ms=tool_elapsed_ms,
                         session_id=session_id,
                     )
+                continue  # 继续下一轮循环
+
+            # 无工具调用 → 最终文本回答
+            if stream_text:
+                final_answer = stream_text
+                for chunk in _chunk_text(final_answer):
+                    yield _sse_event("delta", {"text": chunk})
+                break
+
+            if stream_done:
+                break
         else:
-            # 达到最大步数——强制 LLM 生成最终回答
             yield _sse_event("think", {"text": "已达到最大步数，正在汇总..."})
             messages.append({
                 "role": "user",

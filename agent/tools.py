@@ -57,6 +57,31 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "compare_algorithms",
+            "description": (
+                "对比两种算法的复杂度、适用场景和优劣。"
+                "当你需要帮助用户在两种算法之间做选择时使用。"
+                "会先搜索知识库获取两种算法的资料，再给出结构化对比。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "algorithm_a": {
+                        "type": "string",
+                        "description": "第一种算法名称，如 'BFS'、'动态规划'、'Dijkstra'",
+                    },
+                    "algorithm_b": {
+                        "type": "string",
+                        "description": "第二种算法名称",
+                    },
+                },
+                "required": ["algorithm_a", "algorithm_b"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_document_detail",
             "description": (
                 "获取某个知识库文档的完整文本内容（所有切块）。"
@@ -87,6 +112,8 @@ def execute_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         return _search_knowledge(arguments)
     if name == "run_python":
         return _run_python(arguments)
+    if name == "compare_algorithms":
+        return _compare_algorithms(arguments)
     if name == "get_document_detail":
         return _get_document_detail(arguments)
     return {"error": f"未知工具: {name}"}
@@ -167,6 +194,26 @@ def _run_python(args: dict[str, Any]) -> dict[str, Any]:
             tmp_path.unlink()
         except OSError:
             pass
+
+
+def _compare_algorithms(args: dict[str, Any]) -> dict[str, Any]:
+    a = str(args.get("algorithm_a", "")).strip()
+    b = str(args.get("algorithm_b", "")).strip()
+    if not a or not b:
+        return {"error": "algorithm_a 和 algorithm_b 均不能为空"}
+
+    # 分别搜索两种算法的知识库资料
+    result_a = _search_knowledge({"query": f"{a} 算法 复杂度 适用场景"})
+    result_b = _search_knowledge({"query": f"{b} 算法 复杂度 适用场景"})
+
+    sources_a = [r["source"] for r in result_a.get("results", [])] if "results" in result_a else []
+    sources_b = [r["source"] for r in result_b.get("results", [])] if "results" in result_b else []
+
+    return {
+        "algorithm_a": {"name": a, "sources": sources_a, "result_count": result_a.get("count", 0)},
+        "algorithm_b": {"name": b, "sources": sources_b, "result_count": result_b.get("count", 0)},
+        "message": f"已分别搜索「{a}」和「{b}」的资料，请基于以上搜索结果给出结构化对比。",
+    }
 
 
 def _get_document_detail(args: dict[str, Any]) -> dict[str, Any]:

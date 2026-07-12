@@ -2042,6 +2042,25 @@ textarea::placeholder {
   font-size: 0.8rem;
 }
 
+.stop-button {
+  border: 0;
+  border-radius: 14px;
+  min-width: 44px;
+  height: 44px;
+  font-size: 1.1em;
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.stop-button:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
 button[type="submit"] {
   border: 0;
   border-radius: 14px;
